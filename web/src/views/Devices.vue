@@ -99,7 +99,7 @@ onMounted(load);
           <dd>{{ camera.configured ? "已配置" : "未配置" }}</dd>
 
           <template v-if="cameraTest">
-            <dt>响应时间</dt>
+            <dt>连接延迟</dt>
             <dd>{{ cameraTest.duration_ms ?? "—" }} ms</dd>
           </template>
         </dl>
