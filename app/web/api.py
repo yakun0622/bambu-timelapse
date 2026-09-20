@@ -327,7 +327,10 @@ def get_settings():
             "user": settings.yi_user,
             "password_configured": bool(settings.yi_password),
             "capture_source": settings.capture_source,
+            "rtsp_port": settings.yi_rtsp_port,
+            "rtsp_path": settings.yi_rtsp_path,
             "rtsp_url_configured": bool(settings.yi_rtsp_url),
+            "rtsp_display_url": camera.rtsp_display_url,
         },
         "capture": {
             "auto_capture": settings.auto_capture,
