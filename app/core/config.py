@@ -32,6 +32,13 @@ class Settings:
     rtsp_frame_max_age: float = float(
         os.getenv("RTSP_FRAME_MAX_AGE", "1.0")
     )
+    rtsp_history_frames: int = max(
+        10,
+        int(os.getenv("RTSP_HISTORY_FRAMES", "60")),
+    )
+    rtsp_capture_frame_offset: int = int(
+        os.getenv("RTSP_CAPTURE_FRAME_OFFSET", "-5")
+    )
 
     snapshot_delay: float = float(os.getenv("SNAPSHOT_DELAY", "0.5"))
     snapshot_retries: int = int(os.getenv("SNAPSHOT_RETRIES", "3"))
