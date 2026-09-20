@@ -88,13 +88,13 @@ onMounted(async () => {
           </dd>
 
           <dt>RTSP 地址</dt>
-          <dd>
-            {{
-              settings.camera.rtsp_url_configured
-                ? "自定义"
-                : "自动使用 ch0_0.h264"
-            }}
-          </dd>
+          <dd>{{ settings.camera.rtsp_display_url }}</dd>
+
+          <dt>RTSP 端口</dt>
+          <dd>{{ settings.camera.rtsp_port }}</dd>
+
+          <dt>RTSP 路径</dt>
+          <dd>{{ settings.camera.rtsp_path }}</dd>
         </dl>
       </article>
 
