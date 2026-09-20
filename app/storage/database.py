@@ -6,6 +6,8 @@ from app.core.config import settings
 
 
 class Database:
+    ACTIVE_STATUSES = ("PRINTING", "PAUSED")
+
     def __init__(self):
         self.path = settings.database_path
         self._lock = threading.Lock()
@@ -76,37 +78,105 @@ class Database:
         now = datetime.now(timezone.utc).isoformat()
         self.update_job(job_id, status=status, finished_at=now)
 
+    def get_active_jobs(self):
+        placeholders = ",".join("?" for _ in self.ACTIVE_STATUSES)
+        with self.connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT * FROM print_jobs
+                WHERE status IN ({placeholders})
+                ORDER BY id DESC
+                """,
+                self.ACTIVE_STATUSES,
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def get_latest_active_job(self):
+        jobs = self.get_active_jobs()
+        return jobs[0] if jobs else None
+
+    def supersede_other_active_jobs(self, keep_job_id):
+        """Close duplicate active rows left by older restart behavior."""
+        now = datetime.now(timezone.utc).isoformat()
+        placeholders = ",".join("?" for _ in self.ACTIVE_STATUSES)
+        params = [now, keep_job_id, *self.ACTIVE_STATUSES]
+
+        with self._lock, self.connect() as conn:
+            conn.execute(
+                f"""
+                UPDATE print_jobs
+                SET status='SUPERSEDED', finished_at=?
+                WHERE id != ?
+                  AND status IN ({placeholders})
+                """,
+                params,
+            )
+
     def add_snapshot(self, job_id, layer, file_path, status, duration_ms=None, error=None):
         now = datetime.now(timezone.utc).isoformat()
         with self._lock, self.connect() as conn:
+            existing = conn.execute(
+                "SELECT status FROM snapshots WHERE job_id=? AND layer=?",
+                (job_id, layer),
+            ).fetchone()
+
             conn.execute(
                 """
                 INSERT OR REPLACE INTO snapshots
                 (job_id,layer,file_path,status,captured_at,duration_ms,error)
                 VALUES (?,?,?,?,?,?,?)
                 """,
-                (job_id, layer, str(file_path) if file_path else None, status, now, duration_ms, error),
+                (
+                    job_id,
+                    layer,
+                    str(file_path) if file_path else None,
+                    status,
+                    now,
+                    duration_ms,
+                    error,
+                ),
             )
-            if status == "SUCCESS":
-                conn.execute("UPDATE print_jobs SET frame_count=frame_count+1 WHERE id=?", (job_id,))
-            elif status == "FAILED":
-                conn.execute("UPDATE print_jobs SET failed_frames=failed_frames+1 WHERE id=?", (job_id,))
+
+            previous_status = existing["status"] if existing else None
+
+            if status == "SUCCESS" and previous_status != "SUCCESS":
+                conn.execute(
+                    "UPDATE print_jobs SET frame_count=frame_count+1 WHERE id=?",
+                    (job_id,),
+                )
+            elif status == "FAILED" and previous_status is None:
+                conn.execute(
+                    "UPDATE print_jobs SET failed_frames=failed_frames+1 WHERE id=?",
+                    (job_id,),
+                )
 
     def list_jobs(self, limit=100):
         with self.connect() as conn:
             rows = conn.execute(
-                "SELECT * FROM print_jobs ORDER BY id DESC LIMIT ?", (limit,)
+                """
+                SELECT * FROM print_jobs
+                WHERE status != 'SUPERSEDED'
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (limit,),
             ).fetchall()
             return [dict(r) for r in rows]
 
     def get_job(self, job_id):
         with self.connect() as conn:
-            row = conn.execute("SELECT * FROM print_jobs WHERE id=?", (job_id,)).fetchone()
+            row = conn.execute(
+                "SELECT * FROM print_jobs WHERE id=?",
+                (job_id,),
+            ).fetchone()
+
             if not row:
                 return None
+
             job = dict(row)
             shots = conn.execute(
-                "SELECT * FROM snapshots WHERE job_id=? ORDER BY layer", (job_id,)
+                "SELECT * FROM snapshots WHERE job_id=? ORDER BY layer",
+                (job_id,),
             ).fetchall()
             job["snapshots"] = [dict(r) for r in shots]
             return job
