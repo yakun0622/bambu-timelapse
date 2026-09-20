@@ -43,21 +43,32 @@ class CaptureService:
                 continue
 
             event_bus.emit("SNAPSHOT_STARTED", f"Capturing layer {layer}", {"job_id": job_id, "layer": layer})
-            ok, duration_ms, error = camera.snapshot(target)
+            ok, duration_ms, error, source = camera.snapshot(target)
 
             if ok:
                 db.add_snapshot(job_id, layer, target, "SUCCESS", duration_ms)
                 event_bus.emit(
                     "SNAPSHOT_SUCCESS",
                     f"Snapshot saved for layer {layer}",
-                    {"job_id": job_id, "layer": layer, "path": str(target), "duration_ms": duration_ms},
+                    {
+                        "job_id": job_id,
+                        "layer": layer,
+                        "path": str(target),
+                        "duration_ms": duration_ms,
+                        "source": source,
+                    },
                 )
             else:
                 db.add_snapshot(job_id, layer, None, "FAILED", duration_ms, error)
                 event_bus.emit(
                     "SNAPSHOT_FAILED",
                     f"Snapshot failed for layer {layer}",
-                    {"job_id": job_id, "layer": layer, "error": error},
+                    {
+                        "job_id": job_id,
+                        "layer": layer,
+                        "error": error,
+                        "source": source,
+                    },
                 )
 
 
