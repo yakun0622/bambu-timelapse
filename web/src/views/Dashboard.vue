@@ -225,8 +225,23 @@ function eventMessage(event) {
       return d.layer ? `进入第 ${d.layer} 层` : "检测到换层";
     case "SNAPSHOT_STARTED":
       return d.layer ? `正在抓拍第 ${d.layer} 层` : "正在抓拍";
-    case "SNAPSHOT_SUCCESS":
-      return d.layer ? `第 ${d.layer} 层抓拍完成` : "抓拍完成";
+    case "SNAPSHOT_SUCCESS": {
+      const source = d.source === "rtsp"
+        ? "RTSP"
+        : d.source === "http"
+          ? "HTTP 回退"
+          : "";
+      const duration = d.duration_ms !== undefined
+        ? ` · ${d.duration_ms} ms`
+        : "";
+      const prefix = d.layer
+        ? `第 ${d.layer} 层抓拍完成`
+        : "抓拍完成";
+
+      return source
+        ? `${prefix} · ${source}${duration}`
+        : `${prefix}${duration}`;
+    }
     case "SNAPSHOT_FAILED":
       return d.layer ? `第 ${d.layer} 层抓拍失败` : "抓拍失败";
     case "PRINT_COMPLETING":
@@ -443,7 +458,15 @@ onBeforeUnmount(() => {
           <div class="camera-summary">
             <div>
               <small>抓拍方式</small>
-              <strong>HTTP 高分辨率</strong>
+              <strong>
+                {{
+                  data.camera?.rtsp?.ready
+                    ? "RTSP 实时帧"
+                    : data.camera?.capture_source === "http"
+                      ? "HTTP 高分辨率"
+                      : "RTSP / HTTP 回退"
+                }}
+              </strong>
             </div>
 
             <div>
@@ -479,6 +502,13 @@ onBeforeUnmount(() => {
               <small>最近抓拍</small>
               <strong v-if="data.latest_snapshot">
                 第 {{ data.latest_snapshot.layer }} 层
+                <template v-if="data.latest_snapshot.source">
+                  · {{
+                    data.latest_snapshot.source === "rtsp"
+                      ? "RTSP"
+                      : "HTTP"
+                  }}
+                </template>
               </strong>
               <strong v-else>暂无抓拍</strong>
             </div>
@@ -506,7 +536,7 @@ onBeforeUnmount(() => {
                 <strong>第 {{ data.latest_snapshot.layer }} 层</strong>
               </div>
               <div>
-                <small>连接延迟</small>
+                <small>抓拍耗时</small>
                 <strong>
                   {{
                     data.latest_snapshot.duration_ms !== null
