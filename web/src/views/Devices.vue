@@ -101,6 +101,33 @@ onMounted(load);
           <template v-if="cameraTest">
             <dt>连接延迟</dt>
             <dd>{{ cameraTest.duration_ms ?? "—" }} ms</dd>
+
+            <dt>RTSP 状态</dt>
+            <dd>
+              {{
+                cameraTest.rtsp?.ready
+                  ? "实时缓冲正常"
+                  : cameraTest.rtsp?.connected
+                    ? "等待最新帧"
+                    : "未连接"
+              }}
+            </dd>
+
+            <dt>最新帧龄</dt>
+            <dd>
+              {{
+                cameraTest.rtsp?.frame_age_ms !== null
+                && cameraTest.rtsp?.frame_age_ms !== undefined
+                  ? cameraTest.rtsp.frame_age_ms + " ms"
+                  : "—"
+              }}
+            </dd>
+
+            <dt>累计缓存帧</dt>
+            <dd>{{ cameraTest.rtsp?.frames ?? 0 }}</dd>
+
+            <dt>RTSP 重连</dt>
+            <dd>{{ cameraTest.rtsp?.reconnects ?? 0 }}</dd>
           </template>
         </dl>
 
