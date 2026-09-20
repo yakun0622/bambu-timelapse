@@ -254,7 +254,7 @@ class PrintService:
         if (
             self.current_job_id is not None
             and gcode_state == "RUNNING"
-            and not self.current_job_key.startswith("bambu:")
+            and not (self.current_job_key or "").startswith("bambu:")
         ):
             layer_reset = (
                 isinstance(layer, int)
