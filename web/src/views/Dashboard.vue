@@ -11,7 +11,6 @@ const data = ref({
 });
 
 const timeline = ref([]);
-const liveEvent = ref(null);
 const loading = ref(true);
 const cameraHealth = ref(null);
 const testingCamera = ref(false);
@@ -41,9 +40,7 @@ const cameraOnline = computed(() =>
 const elapsedText = computed(() => {
   const startedAt = data.value.job?.started_at;
 
-  if (!startedAt) {
-    return "—";
-  }
+  if (!startedAt) return "—";
 
   const elapsedMs = Math.max(
     0,
@@ -52,20 +49,13 @@ const elapsedText = computed(() => {
 
   const totalSeconds = Math.floor(elapsedMs / 1000);
   const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor(
-    (totalSeconds % 3600) / 60
-  );
-  const seconds = totalSeconds % 60;
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
 
   if (hours > 0) {
     return `${hours}小时 ${minutes}分`;
   }
 
-  if (minutes > 0) {
-    return `${minutes}分 ${seconds}秒`;
-  }
-
-  return `${seconds}秒`;
+  return `${minutes}分钟`;
 });
 
 function stateLabel(value) {
@@ -87,15 +77,9 @@ function stateLabel(value) {
 }
 
 function eventKey(event) {
-  if (event.id !== undefined && event.id !== null) {
-    return `id:${event.id}`;
-  }
-
-  return [
-    event.type,
-    event.message,
-    event.time
-  ].join("|");
+  return event.id !== undefined && event.id !== null
+    ? `id:${event.id}`
+    : [event.type, event.message, event.time].join("|");
 }
 
 function sortEvents(events) {
@@ -105,24 +89,13 @@ function sortEvents(events) {
 }
 
 function hydrateEvents(events = []) {
-  const progressEvents = events.filter(
-    event => event.type === "PRINT_PROGRESS"
-  );
-
-  if (progressEvents.length) {
-    liveEvent.value = sortEvents(progressEvents)[0];
-  }
-
   const meaningful = events.filter(
     event => event.type !== "PRINT_PROGRESS"
   );
 
   const unique = new Map();
 
-  for (const event of [
-    ...timeline.value,
-    ...meaningful
-  ]) {
+  for (const event of [...timeline.value, ...meaningful]) {
     unique.set(eventKey(event), event);
   }
 
@@ -150,9 +123,7 @@ async function refresh() {
 }
 
 async function testCamera() {
-  if (testingCamera.value) {
-    return;
-  }
+  if (testingCamera.value) return;
 
   testingCamera.value = true;
 
@@ -162,9 +133,7 @@ async function testCamera() {
       { method: "POST" }
     );
   } catch {
-    cameraHealth.value = {
-      online: false
-    };
+    cameraHealth.value = { online: false };
   } finally {
     testingCamera.value = false;
   }
@@ -185,8 +154,6 @@ async function captureNow() {
 
 function handleRealtimeEvent(event) {
   if (event.type === "PRINT_PROGRESS") {
-    liveEvent.value = event;
-
     if (event.data) {
       data.value.printer = {
         ...data.value.printer,
@@ -255,21 +222,13 @@ function eventMessage(event) {
     case "PRINT_INTERRUPTED":
       return "检测到新任务，旧任务已结束";
     case "LAYER_CHANGED":
-      return d.layer
-        ? `进入第 ${d.layer} 层`
-        : "检测到换层";
+      return d.layer ? `进入第 ${d.layer} 层` : "检测到换层";
     case "SNAPSHOT_STARTED":
-      return d.layer
-        ? `正在抓拍第 ${d.layer} 层`
-        : "正在抓拍";
+      return d.layer ? `正在抓拍第 ${d.layer} 层` : "正在抓拍";
     case "SNAPSHOT_SUCCESS":
-      return d.layer
-        ? `第 ${d.layer} 层抓拍完成`
-        : "抓拍完成";
+      return d.layer ? `第 ${d.layer} 层抓拍完成` : "抓拍完成";
     case "SNAPSHOT_FAILED":
-      return d.layer
-        ? `第 ${d.layer} 层抓拍失败`
-        : "抓拍失败";
+      return d.layer ? `第 ${d.layer} 层抓拍失败` : "抓拍失败";
     case "PRINT_COMPLETING":
       return "打印进度已到 100%，等待完成状态";
     case "PRINT_FINISHED":
@@ -293,17 +252,13 @@ function eventTone(type) {
     "VIDEO_FINISHED",
     "PRINT_FINISHED",
     "MQTT_CONNECTED"
-  ].includes(type)) {
-    return "success";
-  }
+  ].includes(type)) return "success";
 
   if ([
     "SNAPSHOT_FAILED",
     "VIDEO_FAILED",
     "MQTT_DISCONNECTED"
-  ].includes(type)) {
-    return "danger";
-  }
+  ].includes(type)) return "danger";
 
   if ([
     "PRINT_STARTED",
@@ -311,39 +266,24 @@ function eventTone(type) {
     "LAYER_CHANGED",
     "SNAPSHOT_STARTED",
     "VIDEO_STARTED"
-  ].includes(type)) {
-    return "active";
-  }
+  ].includes(type)) return "active";
 
   return "neutral";
 }
 
 function formatTime(value) {
-  if (!value) {
-    return "—";
-  }
-
-  return new Date(value).toLocaleTimeString();
+  return value
+    ? new Date(value).toLocaleTimeString()
+    : "—";
 }
 
 onMounted(async () => {
-  await Promise.all([
-    refresh(),
-    testCamera()
-  ]);
+  await Promise.all([refresh(), testCamera()]);
 
   socket = connectEvents(handleRealtimeEvent);
 
-  refreshTimer = setInterval(
-    refresh,
-    15000
-  );
-
-  cameraTimer = setInterval(
-    testCamera,
-    30000
-  );
-
+  refreshTimer = setInterval(refresh, 15000);
+  cameraTimer = setInterval(testCamera, 30000);
   clockTimer = setInterval(
     () => {
       now.value = Date.now();
@@ -373,25 +313,19 @@ onBeforeUnmount(() => {
         class="badge"
         :class="isRunning ? 'ok' : 'muted'"
       >
-        <i
-          v-if="isRunning"
-          class="live-dot"
-        ></i>
+        <i v-if="isRunning" class="live-dot"></i>
         {{ stateLabel(data.printer?.state) }}
       </span>
     </div>
 
-    <div
-      v-if="loading"
-      class="card"
-    >
+    <div v-if="loading" class="card">
       正在加载…
     </div>
 
     <template v-else>
-      <div class="device-status-grid">
-        <article class="card device-status-card">
-          <div class="device-status-head">
+      <div class="dashboard-primary-grid">
+        <article class="card dashboard-primary-card printer-task-card">
+          <div class="primary-card-head">
             <div>
               <small>拓竹打印机</small>
               <strong>Bambu Lab</strong>
@@ -406,14 +340,11 @@ onBeforeUnmount(() => {
             </span>
           </div>
 
-          <div class="device-stat-row">
+          <div class="printer-summary">
             <div>
               <small>打印状态</small>
-              <strong>
-                {{ stateLabel(data.printer?.state) }}
-              </strong>
+              <strong>{{ stateLabel(data.printer?.state) }}</strong>
             </div>
-
             <div>
               <small>当前层数</small>
               <strong>
@@ -422,7 +353,6 @@ onBeforeUnmount(() => {
                 {{ data.printer?.total_layers ?? "—" }}
               </strong>
             </div>
-
             <div>
               <small>打印进度</small>
               <strong>{{ progress }}%</strong>
@@ -432,10 +362,64 @@ onBeforeUnmount(() => {
           <div class="progress">
             <i :style="{ width: progress + '%' }"></i>
           </div>
+
+          <div class="primary-divider"></div>
+
+          <template v-if="data.job">
+            <div class="job-inline-head">
+              <div>
+                <small>当前打印任务</small>
+                <h2>{{ data.job.name }}</h2>
+              </div>
+
+              <span
+                class="badge"
+                :class="
+                  data.job.status === 'PRINTING'
+                    ? 'ok'
+                    : data.job.status === 'PAUSED'
+                      ? 'warn'
+                      : 'muted'
+                "
+              >
+                {{ stateLabel(data.job.status) }}
+              </span>
+            </div>
+
+            <div class="job-inline-metrics">
+              <div>
+                <small>已运行</small>
+                <strong>{{ elapsedText }}</strong>
+              </div>
+              <div>
+                <small>成功抓拍</small>
+                <strong>{{ data.job.frame_count }}</strong>
+              </div>
+              <div>
+                <small>失败抓拍</small>
+                <strong>{{ data.job.failed_frames }}</strong>
+              </div>
+              <div>
+                <small>子任务 ID</small>
+                <strong>{{ data.job.bambu_subtask_id || "—" }}</strong>
+              </div>
+            </div>
+
+            <div class="task-key compact">
+              <small>任务唯一键</small>
+              <code>{{ data.job.job_key || "—" }}</code>
+            </div>
+          </template>
+
+          <div v-else class="task-empty compact-empty">
+            <div class="task-empty-icon">◌</div>
+            <strong>当前没有活动打印任务</strong>
+            <span>检测到打印开始后会自动创建并跟踪任务。</span>
+          </div>
         </article>
 
-        <article class="card device-status-card">
-          <div class="device-status-head">
+        <article class="card dashboard-primary-card camera-snapshot-card">
+          <div class="primary-card-head">
             <div>
               <small>小蚁摄像头</small>
               <strong>{{ data.camera?.ip || "未配置" }}</strong>
@@ -456,7 +440,7 @@ onBeforeUnmount(() => {
             </span>
           </div>
 
-          <div class="device-stat-row camera-stats">
+          <div class="camera-summary">
             <div>
               <small>抓拍方式</small>
               <strong>HTTP 高分辨率</strong>
@@ -472,132 +456,40 @@ onBeforeUnmount(() => {
                 }}
               </strong>
             </div>
-          </div>
 
-          <div class="device-actions">
-            <button
-              class="button secondary-button"
-              :disabled="testingCamera"
-              @click="testCamera"
-            >
-              检测连接
-            </button>
-
-            <button
-              class="button"
-              @click="captureNow"
-            >
-              立即抓拍
-            </button>
-          </div>
-        </article>
-      </div>
-
-      <div class="dashboard-feature-grid">
-        <article class="card current-job task-overview-card">
-          <div class="card-title">
-            <span>当前打印任务</span>
-            <span>
-              #{{ data.job?.id || "—" }}
-            </span>
-          </div>
-
-          <template v-if="data.job">
-            <div class="task-heading">
-              <div>
-                <small>任务名称</small>
-                <h2>{{ data.job.name }}</h2>
-              </div>
-
-              <span
-                class="badge"
-                :class="
-                  data.job.status === 'PRINTING'
-                    ? 'ok'
-                    : data.job.status === 'PAUSED'
-                      ? 'warn'
-                      : 'muted'
-                "
+            <div class="camera-summary-actions">
+              <button
+                class="button secondary-button"
+                :disabled="testingCamera"
+                @click="testCamera"
               >
-                {{ stateLabel(data.job.status) }}
-              </span>
+                检测连接
+              </button>
+
+              <button class="button" @click="captureNow">
+                立即抓拍
+              </button>
             </div>
-
-            <div class="task-progress-line">
-              <div>
-                <span>
-                  第 {{ data.job.current_layer ?? "—" }}
-                  /
-                  {{ data.job.total_layers ?? "—" }} 层
-                </span>
-                <strong>
-                  {{ data.job.progress ?? 0 }}%
-                </strong>
-              </div>
-
-              <div class="progress">
-                <i
-                  :style="{
-                    width: (data.job.progress ?? 0) + '%'
-                  }"
-                ></i>
-              </div>
-            </div>
-
-            <div class="task-metrics">
-              <div>
-                <small>已运行</small>
-                <strong>{{ elapsedText }}</strong>
-              </div>
-
-              <div>
-                <small>成功抓拍</small>
-                <strong>{{ data.job.frame_count }}</strong>
-              </div>
-
-              <div>
-                <small>失败抓拍</small>
-                <strong>{{ data.job.failed_frames }}</strong>
-              </div>
-
-              <div>
-                <small>子任务 ID</small>
-                <strong>
-                  {{ data.job.bambu_subtask_id || "—" }}
-                </strong>
-              </div>
-            </div>
-
-            <div class="task-key">
-              <small>任务唯一键</small>
-              <code>{{ data.job.job_key || "—" }}</code>
-            </div>
-          </template>
-
-          <div
-            v-else
-            class="task-empty"
-          >
-            <div class="task-empty-icon">◌</div>
-            <strong>当前没有活动打印任务</strong>
-            <span>
-              检测到打印开始后会自动创建并跟踪任务。
-            </span>
           </div>
-        </article>
 
-        <article class="card snapshot-card">
-          <div class="card-title">
-            <span>最近抓拍</span>
-            <span
-              v-if="data.latest_snapshot"
-            >
-              第 {{ data.latest_snapshot.layer }} 层
+          <div class="primary-divider"></div>
+
+          <div class="snapshot-inline-head">
+            <div>
+              <small>最近抓拍</small>
+              <strong v-if="data.latest_snapshot">
+                第 {{ data.latest_snapshot.layer }} 层
+              </strong>
+              <strong v-else>暂无抓拍</strong>
+            </div>
+
+            <span v-if="data.latest_snapshot" class="snapshot-time">
+              {{ formatTime(data.latest_snapshot.captured_at) }}
             </span>
           </div>
 
           <template v-if="data.latest_snapshot">
-            <div class="snapshot-preview">
+            <div class="snapshot-preview merged">
               <img
                 :src="
                   data.latest_snapshot.url
@@ -608,14 +500,11 @@ onBeforeUnmount(() => {
               />
             </div>
 
-            <div class="snapshot-meta">
+            <div class="snapshot-meta merged">
               <div>
                 <small>抓拍层数</small>
-                <strong>
-                  第 {{ data.latest_snapshot.layer }} 层
-                </strong>
+                <strong>第 {{ data.latest_snapshot.layer }} 层</strong>
               </div>
-
               <div>
                 <small>响应时间</small>
                 <strong>
@@ -626,32 +515,18 @@ onBeforeUnmount(() => {
                   }}
                 </strong>
               </div>
-
               <div>
                 <small>抓拍时间</small>
-                <strong>
-                  {{
-                    formatTime(
-                      data.latest_snapshot.captured_at
-                    )
-                  }}
-                </strong>
+                <strong>{{ formatTime(data.latest_snapshot.captured_at) }}</strong>
               </div>
             </div>
           </template>
 
-          <div
-            v-else
-            class="snapshot-empty"
-          >
+          <div v-else class="snapshot-empty merged-empty">
             <div class="snapshot-placeholder">
               <span>暂无抓拍</span>
             </div>
-
-            <p>
-              下一次自动抓拍成功后，
-              图片会实时显示在这里。
-            </p>
+            <p>下一次自动抓拍成功后，图片会实时显示在这里。</p>
           </div>
         </article>
       </div>
@@ -659,7 +534,6 @@ onBeforeUnmount(() => {
       <article class="card activity-card">
         <div class="card-title">
           <span>实时动态</span>
-
           <span class="realtime-label">
             <i class="live-dot"></i>
             实时
@@ -678,7 +552,6 @@ onBeforeUnmount(() => {
             <small>当前状态</small>
             <strong>
               {{ stateLabel(data.printer?.state) }}
-
               <template
                 v-if="
                   data.printer?.layer !== null &&
@@ -726,19 +599,12 @@ onBeforeUnmount(() => {
             </div>
 
             <time>
-              {{
-                new Date(
-                  event.time
-                ).toLocaleTimeString()
-              }}
+              {{ new Date(event.time).toLocaleTimeString() }}
             </time>
           </div>
         </TransitionGroup>
 
-        <div
-          v-if="!timeline.length"
-          class="empty event-empty"
-        >
+        <div v-if="!timeline.length" class="empty event-empty">
           等待打印、换层、抓拍或视频生成事件…
         </div>
       </article>
