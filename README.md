@@ -186,7 +186,7 @@ A frame is captured after a real layer transition such as:
 
 Automatic capture also requires the print to be in an active printing state and not already complete.
 
-By default, frame acquisition uses `CAPTURE_SOURCE=auto`. The service first asks FFmpeg for a single frame from the Yi RTSP stream and, if that fails, falls back to the HTTP snapshot CGI. RTSP capture is usually much closer to the actual layer-change moment because it avoids waiting for the camera to generate a separate high-resolution still image.
+By default, frame acquisition uses `CAPTURE_SOURCE=auto`. The RTSP URL is built automatically from `YI_IP`, `YI_USER`, `YI_PASSWORD`, `YI_RTSP_PORT`, and `YI_RTSP_PATH`. The service first asks FFmpeg for a single frame from the Yi RTSP stream and, if that fails, falls back to the HTTP snapshot CGI. RTSP capture is usually much closer to the actual layer-change moment because it avoids waiting for the camera to generate a separate high-resolution still image.
 
 ## Quick Start with Docker
 
@@ -264,6 +264,8 @@ YI_USER=admin
 YI_PASSWORD=your_camera_password
 
 CAPTURE_SOURCE=auto
+YI_RTSP_PORT=554
+YI_RTSP_PATH=/ch0_0.h264
 YI_RTSP_URL=
 RTSP_CAPTURE_TIMEOUT=4
 
@@ -292,9 +294,11 @@ Main options:
 | `BAMBU_DEVICE_ID` | Printer device ID |
 | `YI_IP` | Yi camera IP address |
 | `YI_USER` | Yi Hack HTTP username |
-| `YI_PASSWORD` | Yi Hack HTTP password |
+| `YI_PASSWORD` | Yi Hack HTTP/RTSP password |
 | `CAPTURE_SOURCE` | `auto`, `rtsp`, or `http`; `auto` tries RTSP first and falls back to HTTP |
-| `YI_RTSP_URL` | Optional custom RTSP URL; defaults to `rtsp://<YI_IP>/ch0_0.h264` |
+| `YI_RTSP_PORT` | RTSP server port, default `554` |
+| `YI_RTSP_PATH` | RTSP stream path, default `/ch0_0.h264` |
+| `YI_RTSP_URL` | Optional full RTSP URL override for non-standard setups |
 | `RTSP_CAPTURE_TIMEOUT` | Maximum time to wait for a single RTSP frame |
 | `AUTO_CAPTURE` | Enable automatic layer snapshots |
 | `SNAPSHOT_DELAY` | Delay before taking a snapshot |
