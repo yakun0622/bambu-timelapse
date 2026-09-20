@@ -57,6 +57,8 @@ class Database:
                     status TEXT NOT NULL,
                     captured_at TEXT NOT NULL,
                     duration_ms INTEGER,
+                    source TEXT,
+                    frame_age_ms INTEGER,
                     error TEXT,
                     UNIQUE(job_id, layer)
                 );
@@ -85,6 +87,8 @@ class Database:
             self._ensure_column(conn, "print_jobs", "bambu_task_id", "TEXT")
             self._ensure_column(conn, "print_jobs", "bambu_subtask_id", "TEXT")
             self._ensure_column(conn, "print_jobs", "job_key", "TEXT")
+            self._ensure_column(conn, "snapshots", "source", "TEXT")
+            self._ensure_column(conn, "snapshots", "frame_age_ms", "INTEGER")
 
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_print_jobs_job_key "
@@ -248,6 +252,8 @@ class Database:
         status,
         duration_ms=None,
         error=None,
+        source=None,
+        frame_age_ms=None,
     ):
         now = datetime.now(timezone.utc).isoformat()
 
@@ -260,8 +266,18 @@ class Database:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO snapshots
-                (job_id,layer,file_path,status,captured_at,duration_ms,error)
-                VALUES (?,?,?,?,?,?,?)
+                (
+                    job_id,
+                    layer,
+                    file_path,
+                    status,
+                    captured_at,
+                    duration_ms,
+                    source,
+                    frame_age_ms,
+                    error
+                )
+                VALUES (?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     job_id,
@@ -270,6 +286,8 @@ class Database:
                     status,
                     now,
                     duration_ms,
+                    source,
+                    frame_age_ms,
                     error,
                 ),
             )
