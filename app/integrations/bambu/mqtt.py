@@ -1,5 +1,6 @@
 import json
 import ssl
+import time
 
 import paho.mqtt.client as mqtt
 
@@ -11,6 +12,7 @@ class BambuMQTT:
     def __init__(self, on_print_data):
         self.on_print_data = on_print_data
         self.connected = False
+        self.sequence_id = 0
 
         self.client = mqtt.Client(
             mqtt.CallbackAPIVersion.VERSION2,
@@ -31,8 +33,6 @@ class BambuMQTT:
         self.client.on_message = self._on_message
 
     def start(self):
-        # connect_async keeps the Web/API service available even when
-        # Bambu Cloud is temporarily unreachable.
         self.client.connect_async(
             settings.mqtt_host,
             settings.mqtt_port,
@@ -48,15 +48,50 @@ class BambuMQTT:
         self.client.disconnect()
         self.client.loop_stop()
 
+    def _next_sequence_id(self):
+        self.sequence_id += 1
+        return str(self.sequence_id)
+
+    def request_full_status(self):
+        """Ask the printer for one complete status snapshot after connecting."""
+        topic = f"device/{settings.bambu_device_id}/request"
+        payload = {
+            "pushing": {
+                "sequence_id": self._next_sequence_id(),
+                "command": "pushall",
+                "version": 1,
+                "push_target": 1,
+            }
+        }
+
+        info = self.client.publish(
+            topic,
+            json.dumps(payload, separators=(",", ":")),
+            qos=0,
+        )
+
+        event_bus.emit(
+            "MQTT_PUSHALL",
+            "Requested full printer status",
+            {"topic": topic, "mid": info.mid},
+        )
+
     def _on_connect(self, client, userdata, flags, reason_code, properties):
         self.connected = True
         topic = f"device/{settings.bambu_device_id}/report"
         client.subscribe(topic, qos=0)
+
         event_bus.emit(
             "MQTT_CONNECTED",
             f"MQTT connected: {reason_code}",
             {"topic": topic},
         )
+
+        # A1/P1 cloud reports are often delta-only. Without a pushall request,
+        # a service started halfway through a print may know layer_num but not
+        # gcode_state, total_layer_num or mc_percent for a long time.
+        time.sleep(0.1)
+        self.request_full_status()
 
     def _on_disconnect(self, client, userdata, disconnect_flags, reason_code, properties):
         self.connected = False
