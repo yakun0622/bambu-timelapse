@@ -126,11 +126,9 @@ onMounted(async () => {
           <dt>自动抓拍回溯</dt>
           <dd>
             {{
-              settings.capture.rtsp_capture_frame_offset < 0
-                ? "前 " + Math.abs(settings.capture.rtsp_capture_frame_offset) + " 帧"
-                : settings.capture.rtsp_capture_frame_offset === 0
-                  ? "触发时刻"
-                  : "后 " + settings.capture.rtsp_capture_frame_offset + " 帧"
+              settings.capture.capture_rewind_ms > 0
+                ? settings.capture.capture_rewind_ms + " ms"
+                : "触发时刻"
             }}
           </dd>
 
