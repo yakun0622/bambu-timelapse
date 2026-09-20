@@ -9,7 +9,56 @@
 - CA Certificates
 - tzdata
 
-SQLite、抓拍图片和 MP4 全部保存在宿主机 `./data`，重建容器不会丢失。
+## 持久化说明
+
+Docker 重建、升级或删除容器后，以下数据必须保留在宿主机：
+
+- SQLite 数据库
+- 每层抓拍图片
+- 自动生成的 MP4
+
+Compose 使用显式目录映射：
+
+```yaml
+volumes:
+  - ./data/db:/data/db
+  - ./data/timelapse:/data/timelapse
+```
+
+对应关系：
+
+```text
+宿主机                           容器
+./data/db/              ->       /data/db/
+./data/timelapse/       ->       /data/timelapse/
+```
+
+数据库文件：
+
+```text
+./data/db/app.db
+```
+
+抓拍和视频：
+
+```text
+./data/timelapse/
+└── 20260920_120000_model/
+    ├── layer_0041.jpg
+    ├── layer_0042.jpg
+    └── timelapse.mp4
+```
+
+因此执行：
+
+```bash
+docker compose down
+docker compose up -d --build
+```
+
+不会删除历史数据库、图片或视频。
+
+> 不要执行 `rm -rf data`，否则持久化数据也会被删除。
 
 ## 1. 准备
 
@@ -25,6 +74,12 @@ git clone https://github.com/yakun0622/bambu-timelapse.git
 cd bambu-timelapse
 ```
 
+建议先创建持久化目录：
+
+```bash
+mkdir -p data/db data/timelapse
+```
+
 ## 2. 配置
 
 ```bash
@@ -32,25 +87,43 @@ cp .env.example .env
 nano .env
 ```
 
-填写 Bambu 与 Yi 参数。
-
-Docker Compose 会覆盖以下容器内路径：
+Docker Compose 会在容器内使用：
 
 ```text
 TIMELAPSE_DIR=/data/timelapse
-DATABASE_PATH=/data/app.db
+DATABASE_PATH=/data/db/app.db
 WEB_DIST=/app/web/dist
 ```
 
-宿主机对应：
+其中 Web 静态资源属于应用镜像的一部分，会随版本更新重新构建；用户产生的数据不会放在镜像里。
+
+## 3. 从旧版本迁移
+
+如果你之前使用旧目录结构：
 
 ```text
-./data/
-├── app.db
-└── timelapse/
+./data/app.db
+./data/timelapse/
 ```
 
-## 3. 启动
+升级前执行：
+
+```bash
+mkdir -p data/db
+mv data/app.db data/db/app.db
+```
+
+如果 `data/app.db` 不存在则无需执行。
+
+原来的：
+
+```text
+./data/timelapse/
+```
+
+不需要移动。
+
+## 4. 启动
 
 ```bash
 docker compose up -d --build
@@ -69,34 +142,43 @@ docker compose logs -f --tail=200
 http://服务器IP:8000
 ```
 
-如果需要修改端口：
+修改端口：
 
 ```bash
 WEB_PORT=8088 docker compose up -d
 ```
 
-然后访问：
+## 5. 备份
+
+只需要备份：
 
 ```text
-http://服务器IP:8088
+data/db/
+data/timelapse/
+.env
 ```
 
-## 4. Web 页面
+例如：
 
-- `/` Dashboard
-- `/jobs` 历史打印任务
-- `/devices` 设备状态与摄像头测试
-- `/settings` 当前配置
-- `/health` 服务健康状态
+```bash
+tar czf bambu-timelapse-backup.tar.gz \
+  data/db \
+  data/timelapse \
+  .env
+```
 
-## 5. 更新
+恢复时把这些文件放回项目目录，再启动容器即可。
+
+## 6. 更新
 
 ```bash
 git pull
 docker compose up -d --build
 ```
 
-## 6. 常用命令
+数据库和资源目录不会因为镜像更新而改变。
+
+## 7. 常用命令
 
 ```bash
 docker compose restart
@@ -106,7 +188,7 @@ docker compose exec bambu-timelapse bash
 docker compose exec bambu-timelapse ffmpeg -version
 ```
 
-## 7. 摄像头网络
+## 8. 摄像头网络
 
 容器需要能访问 `YI_IP`。
 
@@ -118,7 +200,7 @@ Linux Docker bridge 网络一般可以直接访问局域网设备。如果 Web �
 - HTTP 用户名密码
 - Snapshot 是否已开启
 
-## 8. 开机启动
+## 9. 开机启动
 
 Compose 已配置：
 
@@ -132,7 +214,7 @@ restart: unless-stopped
 systemctl enable --now docker
 ```
 
-## 9. 安全
+## 10. 安全
 
 `.env` 同时被 `.gitignore` 与 `.dockerignore` 忽略。
 
