@@ -1,0 +1,16 @@
+services:
+  bambu-timelapse:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bambu-timelapse
+    restart: unless-stopped
+    init: true
+    env_file:
+      - .env
+    environment:
+      PYTHONUNBUFFERED: "1"
+      TIMELAPSE_DIR: /data/timelapse
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - ./timelapse:/data/timelapse
