@@ -1,5 +1,6 @@
 import re
 from datetime import datetime
+from pathlib import Path
 
 from app.core.config import settings
 from app.core.events import event_bus
@@ -15,10 +16,43 @@ class PrintService:
         self.state = {}
         self.current_job_id = None
         self.current_job_dir = None
+        self.current_job_name = None
         self.last_layer = None
         self.last_gcode_state = None
         self.last_progress_signature = None
         self.completing_announced = False
+        self.restored_from_db = False
+
+        # Service state used to live only in memory. Recover the unfinished
+        # print job so a container/process restart continues the same job.
+        self._restore_active_job()
+
+    def _restore_active_job(self):
+        active = db.get_latest_active_job()
+        if not active:
+            return
+
+        # Older versions could create another PRINTING row after every restart.
+        # Keep only the newest unfinished job visible/active.
+        db.supersede_other_active_jobs(active["id"])
+
+        self.current_job_id = active["id"]
+        self.current_job_dir = Path(active["output_dir"])
+        self.current_job_dir.mkdir(parents=True, exist_ok=True)
+        self.current_job_name = active["name"]
+        self.last_layer = active["current_layer"]
+        self.restored_from_db = True
+
+        event_bus.emit(
+            "PRINT_RESUMED",
+            f"Restored unfinished print job #{active['id']}: {active['name']}",
+            {
+                "job_id": active["id"],
+                "layer": active["current_layer"],
+                "total": active["total_layers"],
+                "progress": active["progress"],
+            },
+        )
 
     def update(self, print_data: dict):
         # Cloud MQTT is delta-based. Keep one merged state in memory.
@@ -28,9 +62,8 @@ class PrintService:
         layer = self.state.get("layer_num")
         total = self.state.get("total_layer_num")
         progress = self.state.get("mc_percent")
+        incoming_name = self._job_name()
 
-        # Do not flood WebSocket/Event UI for fan/temp/wifi delta packets when
-        # print progress itself has not changed.
         signature = (gcode_state, layer, total, progress)
         if signature != self.last_progress_signature:
             self.last_progress_signature = signature
@@ -42,9 +75,27 @@ class PrintService:
                 self.status(),
             )
 
+        # If a persisted unfinished job exists but the printer clearly started
+        # another task, close the old row instead of mixing two prints.
+        if self.current_job_id is not None and gcode_state == "RUNNING":
+            layer_reset = (
+                isinstance(layer, int)
+                and isinstance(self.last_layer, int)
+                and layer < self.last_layer
+            )
+            known_name_changed = (
+                incoming_name != "unknown"
+                and self.current_job_name not in (None, "unknown")
+                and incoming_name != self.current_job_name
+            )
+
+            if layer_reset or known_name_changed:
+                self._interrupt_current_job(
+                    "New print detected after service restart"
+                )
+
         previous_layer = self.last_layer
 
-        # Preferred start condition: explicit RUNNING from the printer.
         if (
             gcode_state == "RUNNING"
             and self.current_job_id is None
@@ -53,10 +104,6 @@ class PrintService:
         ):
             self._start_job(layer, total, progress, inferred=False)
 
-        # Fallback for a service started mid-print before a full status arrives:
-        # an increasing layer number is itself strong evidence that printing is
-        # active. Start from the previous observed layer so this transition can
-        # still produce a frame.
         elif (
             self.current_job_id is None
             and isinstance(previous_layer, int)
@@ -69,6 +116,7 @@ class PrintService:
 
         if self.current_job_id is not None:
             status = "PAUSED" if gcode_state == "PAUSE" else "PRINTING"
+
             db.update_job(
                 self.current_job_id,
                 current_layer=layer,
@@ -87,7 +135,10 @@ class PrintService:
             event_bus.emit(
                 "PRINT_COMPLETING",
                 "Print reached 100%; waiting for FINISH state",
-                {"job_id": self.current_job_id, "progress": progress},
+                {
+                    "job_id": self.current_job_id,
+                    "progress": progress,
+                },
             )
 
         self._handle_layer(layer, total, gcode_state, progress)
@@ -107,14 +158,23 @@ class PrintService:
         job_dir = settings.timelapse_dir / f"{stamp}_{name}"
         job_dir.mkdir(parents=True, exist_ok=True)
 
-        self.current_job_id = db.create_job(name, layer, total, progress, job_dir)
+        self.current_job_id = db.create_job(
+            name,
+            layer,
+            total,
+            progress,
+            job_dir,
+        )
         self.current_job_dir = job_dir
+        self.current_job_name = name
         self.last_layer = layer
         self.completing_announced = False
+        self.restored_from_db = False
 
         event_bus.emit(
             "PRINT_STARTED",
-            f"Print started: {name}" + (" (inferred from layer change)" if inferred else ""),
+            f"Print started: {name}"
+            + (" (inferred from layer change)" if inferred else ""),
             {
                 "job_id": self.current_job_id,
                 "layer": layer,
@@ -123,6 +183,26 @@ class PrintService:
                 "inferred": inferred,
             },
         )
+
+    def _interrupt_current_job(self, reason):
+        if self.current_job_id is None:
+            return
+
+        job_id = self.current_job_id
+
+        db.finish_job(job_id, "INTERRUPTED")
+        event_bus.emit(
+            "PRINT_INTERRUPTED",
+            reason,
+            {"job_id": job_id},
+        )
+
+        self.current_job_id = None
+        self.current_job_dir = None
+        self.current_job_name = None
+        self.last_layer = None
+        self.completing_announced = False
+        self.restored_from_db = False
 
     def _handle_layer(self, layer, total, gcode_state, progress):
         if not isinstance(layer, int):
@@ -145,7 +225,11 @@ class PrintService:
         event_bus.emit(
             "LAYER_CHANGED",
             f"Layer changed {previous} -> {layer}",
-            {"job_id": self.current_job_id, "layer": layer, "total": total},
+            {
+                "job_id": self.current_job_id,
+                "layer": layer,
+                "total": total,
+            },
         )
 
         should_capture = (
@@ -176,26 +260,46 @@ class PrintService:
         }.get(printer_state, printer_state)
 
         db.finish_job(job_id, status)
+
         event_bus.emit(
             "PRINT_FINISHED",
             f"Print ended: {status}",
-            {"job_id": job_id, "status": status},
+            {
+                "job_id": job_id,
+                "status": status,
+            },
         )
 
         if status == "FINISHED":
-            timelapse_service.generate_async(job_id, job_dir)
+            timelapse_service.generate_async(
+                job_id,
+                job_dir,
+            )
 
         self.current_job_id = None
         self.current_job_dir = None
+        self.current_job_name = None
         self.last_layer = None
         self.completing_announced = False
+        self.restored_from_db = False
 
     def _job_name(self):
-        for key in ("subtask_name", "gcode_file", "project_name", "task_name"):
+        for key in (
+            "subtask_name",
+            "gcode_file",
+            "project_name",
+            "task_name",
+        ):
             value = self.state.get(key)
             if value:
-                value = re.sub(r"[^\w\-.]+", "_", str(value).strip(), flags=re.UNICODE)
+                value = re.sub(
+                    r"[^\w\-.]+",
+                    "_",
+                    str(value).strip(),
+                    flags=re.UNICODE,
+                )
                 return value[:100] or "unknown"
+
         return "unknown"
 
     def status(self):
@@ -205,7 +309,8 @@ class PrintService:
             "total_layers": self.state.get("total_layer_num"),
             "progress": self.state.get("mc_percent"),
             "job_id": self.current_job_id,
-            "job_name": self._job_name() if self.current_job_id else None,
+            "job_name": self.current_job_name,
+            "resumed": self.restored_from_db,
         }
 
 
