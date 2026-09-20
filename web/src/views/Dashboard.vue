@@ -447,7 +447,7 @@ onBeforeUnmount(() => {
             </div>
 
             <div>
-              <small>响应时间</small>
+              <small>连接延迟</small>
               <strong>
                 {{
                   cameraHealth?.duration_ms !== undefined
@@ -506,7 +506,7 @@ onBeforeUnmount(() => {
                 <strong>第 {{ data.latest_snapshot.layer }} 层</strong>
               </div>
               <div>
-                <small>响应时间</small>
+                <small>连接延迟</small>
                 <strong>
                   {{
                     data.latest_snapshot.duration_ms !== null
