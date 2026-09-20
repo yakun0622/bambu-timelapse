@@ -17,7 +17,18 @@
 
 ## 页面
 
-Web 端包含 4 个页面：
+Web 端使用统一中文界面，并增加登录保护。
+
+默认管理员账号：
+
+```text
+账号：admin
+密码：admin
+```
+
+首次登录后系统会强制修改默认密码，未完成密码修改前无法访问控制台、任务、设备和设置接口。
+
+Web 端包含 4 个主要页面：
 
 - **Dashboard**：当前打印、层数、进度、抓拍状态、实时事件
 - **Jobs**：历史打印任务、帧列表、视频下载
@@ -206,6 +217,11 @@ bambu-timelapse/
 主要接口：
 
 ```text
+POST /api/auth/login
+GET  /api/auth/me
+POST /api/auth/change-password
+POST /api/auth/logout
+
 GET  /api/status
 GET  /api/printer
 GET  /api/camera
@@ -221,6 +237,10 @@ GET  /api/settings
 WS   /ws
 GET  /health
 ```
+
+除登录、当前用户和修改密码接口外，业务 API 与 WebSocket 都需要登录。
+
+登录会使用 HttpOnly Session Cookie，Session 与管理员账号保存在 SQLite 中，因此 Docker 重建后管理员密码不会恢复成默认值。
 
 敏感 Token 和摄像头密码不会通过 Settings API 返回给浏览器。
 
