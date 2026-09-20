@@ -28,10 +28,13 @@ class AuthService:
             salt,
             cls.PBKDF2_ITERATIONS,
         )
-        return "pbkdf2_sha256\$\{\}\$\{\}\$\{\}".format(
-            cls.PBKDF2_ITERATIONS,
-            base64.b64encode(salt).decode("ascii"),
-            base64.b64encode(digest).decode("ascii"),
+        return (
+            "pbkdf2_sha256$"
+            + str(cls.PBKDF2_ITERATIONS)
+            + "$"
+            + base64.b64encode(salt).decode("ascii")
+            + "$"
+            + base64.b64encode(digest).decode("ascii")
         )
 
     @classmethod
