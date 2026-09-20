@@ -1,3 +1,4 @@
+import socket
 import time
 from pathlib import Path
 
@@ -42,22 +43,40 @@ class YiCamera:
         return False, int((time.monotonic() - started) * 1000), last_error
 
     def test(self):
+        """Lightweight LAN reachability check for the camera HTTP service.
+
+        Do not call the snapshot CGI here. Generating and transferring a
+        high-resolution JPEG can take several seconds on older Yi hardware,
+        which makes a healthy LAN connection look artificially slow and also
+        causes unnecessary camera work when the UI polls health regularly.
+        """
+        started = time.monotonic()
+
         try:
-            started = time.monotonic()
-            response = self.session.get(
-                self.url,
-                auth=(settings.yi_user, settings.yi_password),
-                timeout=10,
-            )
-            ok = response.ok and response.content[:2] == b"\xff\xd8"
+            with socket.create_connection(
+                (settings.yi_ip, 80),
+                timeout=2,
+            ):
+                pass
+
             return {
-                "online": ok,
-                "status_code": response.status_code,
-                "duration_ms": int((time.monotonic() - started) * 1000),
-                "content_type": response.headers.get("Content-Type"),
+                "online": True,
+                "duration_ms": int(
+                    (time.monotonic() - started) * 1000
+                ),
+                "check": "tcp",
+                "port": 80,
             }
         except Exception as exc:
-            return {"online": False, "error": str(exc)}
+            return {
+                "online": False,
+                "duration_ms": int(
+                    (time.monotonic() - started) * 1000
+                ),
+                "check": "tcp",
+                "port": 80,
+                "error": str(exc),
+            }
 
 
 camera = YiCamera()
