@@ -54,11 +54,6 @@ nav a.router-link-active, nav a:hover { color: #fff; background: #181d23; }
   gap: 10px;
 }
 
-.topbar-title span {
-  color: #5f6873;
-  font-size: 11px;
-}
-
 .topbar-title strong {
   color: #dfe4e9;
   font-size: 13px;
@@ -1403,5 +1398,68 @@ dd { margin: 0; color: #d9dde2; overflow-wrap: anywhere; }
 
   .job-inline-head {
     flex-direction: column;
+  }
+}
+
+
+.topbar-device-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.topbar-status-item {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid #252c34;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #7c8691;
+  background: #11161b;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.topbar-status-item i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #626b75;
+}
+
+.topbar-status-item.online {
+  color: #7ee7a3;
+  border-color: rgba(105, 220, 145, .22);
+  background: rgba(105, 220, 145, .05);
+}
+
+.topbar-status-item.online i {
+  background: #69dc91;
+  box-shadow: 0 0 10px rgba(105, 220, 145, .35);
+}
+
+:root[data-theme="light"] .topbar-status-item {
+  border-color: #d9dfe5;
+  background: #ffffff;
+  color: #6e7883;
+}
+
+:root[data-theme="light"] .topbar-status-item.online {
+  color: #2f9d59;
+  border-color: rgba(63, 175, 101, .24);
+  background: rgba(63, 175, 101, .06);
+}
+
+@media (max-width: 780px) {
+  .topbar-status-item span {
+    display: none;
+  }
+
+  .topbar-status-item {
+    width: 32px;
+    padding: 0;
+    justify-content: center;
   }
 }
