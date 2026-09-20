@@ -1,5 +1,6 @@
 import socket
 import subprocess
+import threading
 import time
 from pathlib import Path
 from urllib.parse import quote
@@ -12,6 +13,18 @@ from app.core.config import settings
 class YiCamera:
     def __init__(self):
         self.session = requests.Session()
+
+        self._rtsp_lock = threading.Lock()
+        self._rtsp_thread = None
+        self._rtsp_process = None
+        self._rtsp_running = False
+
+        self._latest_frame = None
+        self._latest_frame_at = None
+        self._rtsp_connected = False
+        self._rtsp_frames = 0
+        self._rtsp_reconnects = 0
+        self._rtsp_last_error = None
 
     @property
     def url(self):
@@ -54,6 +67,188 @@ class YiCamera:
             f"{settings.yi_rtsp_port}{path}"
         )
 
+    def start(self):
+        source = settings.capture_source
+
+        if (
+            source not in {"auto", "rtsp"}
+            or not settings.yi_ip
+            or self._rtsp_running
+        ):
+            return
+
+        self._rtsp_running = True
+        self._rtsp_thread = threading.Thread(
+            target=self._rtsp_worker,
+            name="yi-rtsp-buffer",
+            daemon=True,
+        )
+        self._rtsp_thread.start()
+
+    def stop(self):
+        self._rtsp_running = False
+
+        process = self._rtsp_process
+        if process and process.poll() is None:
+            try:
+                process.terminate()
+                process.wait(timeout=2)
+            except Exception:
+                try:
+                    process.kill()
+                except Exception:
+                    pass
+
+        if self._rtsp_thread:
+            self._rtsp_thread.join(timeout=3)
+
+        self._rtsp_thread = None
+        self._rtsp_process = None
+
+        with self._rtsp_lock:
+            self._rtsp_connected = False
+
+    def _rtsp_worker(self):
+        while self._rtsp_running:
+            process = None
+
+            try:
+                command = [
+                    "ffmpeg",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-rtsp_transport",
+                    "tcp",
+                    "-fflags",
+                    "nobuffer",
+                    "-flags",
+                    "low_delay",
+                    "-i",
+                    self.rtsp_url,
+                    "-map",
+                    "0:v:0",
+                    "-an",
+                    "-vf",
+                    f"fps={settings.rtsp_frame_rate}",
+                    "-q:v",
+                    "2",
+                    "-f",
+                    "image2pipe",
+                    "-vcodec",
+                    "mjpeg",
+                    "pipe:1",
+                ]
+
+                process = subprocess.Popen(
+                    command,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
+                    bufsize=0,
+                )
+                self._rtsp_process = process
+
+                with self._rtsp_lock:
+                    self._rtsp_last_error = None
+
+                self._read_mjpeg_stream(process)
+
+                if self._rtsp_running:
+                    raise RuntimeError(
+                        "RTSP stream ended unexpectedly"
+                    )
+
+            except Exception as exc:
+                with self._rtsp_lock:
+                    self._rtsp_connected = False
+                    self._rtsp_last_error = str(exc)
+                    self._rtsp_reconnects += 1
+
+            finally:
+                self._rtsp_process = None
+
+                if process and process.poll() is None:
+                    try:
+                        process.terminate()
+                    except Exception:
+                        pass
+
+            if self._rtsp_running:
+                time.sleep(1)
+
+    def _read_mjpeg_stream(self, process):
+        buffer = bytearray()
+        stdout = process.stdout
+
+        if stdout is None:
+            raise RuntimeError(
+                "FFmpeg RTSP stdout is unavailable"
+            )
+
+        while self._rtsp_running:
+            chunk = stdout.read(65536)
+
+            if not chunk:
+                break
+
+            buffer.extend(chunk)
+
+            while True:
+                start = buffer.find(b"\xff\xd8")
+                if start < 0:
+                    if len(buffer) > 4 * 1024 * 1024:
+                        buffer.clear()
+                    break
+
+                end = buffer.find(b"\xff\xd9", start + 2)
+                if end < 0:
+                    if start > 0:
+                        del buffer[:start]
+                    break
+
+                frame = bytes(buffer[start:end + 2])
+                del buffer[:end + 2]
+
+                now = time.monotonic()
+
+                with self._rtsp_lock:
+                    self._latest_frame = frame
+                    self._latest_frame_at = now
+                    self._rtsp_connected = True
+                    self._rtsp_frames += 1
+                    self._rtsp_last_error = None
+
+    def rtsp_status(self):
+        with self._rtsp_lock:
+            latest_at = self._latest_frame_at
+            age_ms = (
+                int(
+                    (time.monotonic() - latest_at)
+                    * 1000
+                )
+                if latest_at is not None
+                else None
+            )
+
+            return {
+                "enabled": settings.capture_source
+                in {"auto", "rtsp"},
+                "connected": self._rtsp_connected,
+                "ready": (
+                    self._latest_frame is not None
+                    and age_ms is not None
+                    and age_ms
+                    <= int(
+                        settings.rtsp_frame_max_age
+                        * 1000
+                    )
+                ),
+                "frame_age_ms": age_ms,
+                "frames": self._rtsp_frames,
+                "reconnects": self._rtsp_reconnects,
+                "last_error": self._rtsp_last_error,
+            }
+
     def snapshot(self, target: Path):
         source = settings.capture_source
 
@@ -61,98 +256,102 @@ class YiCamera:
             source = "auto"
 
         if source in {"auto", "rtsp"}:
-            ok, duration_ms, error = self._snapshot_rtsp(target)
+            (
+                ok,
+                duration_ms,
+                error,
+                frame_age_ms,
+            ) = self._snapshot_rtsp_buffer(target)
 
             if ok:
-                return True, duration_ms, None, "rtsp"
+                return (
+                    True,
+                    duration_ms,
+                    None,
+                    "rtsp",
+                    frame_age_ms,
+                )
 
             if source == "rtsp":
-                return False, duration_ms, error, "rtsp"
+                return (
+                    False,
+                    duration_ms,
+                    error,
+                    "rtsp",
+                    frame_age_ms,
+                )
 
-        ok, duration_ms, error = self._snapshot_http(target)
-        return ok, duration_ms, error, "http"
+        ok, duration_ms, error = self._snapshot_http(
+            target
+        )
 
-    def _snapshot_rtsp(self, target: Path):
+        return (
+            ok,
+            duration_ms,
+            error,
+            "http",
+            None,
+        )
+
+    def _snapshot_rtsp_buffer(self, target: Path):
         started = time.monotonic()
-        tmp = target.with_name(target.stem + ".tmp.jpg")
+        deadline = started + min(
+            0.5,
+            settings.rtsp_frame_max_age,
+        )
 
-        try:
-            tmp.unlink(missing_ok=True)
+        while True:
+            with self._rtsp_lock:
+                frame = self._latest_frame
+                frame_at = self._latest_frame_at
 
-            command = [
-                "ffmpeg",
-                "-hide_banner",
-                "-loglevel",
-                "error",
-                "-rtsp_transport",
-                "tcp",
-                "-fflags",
-                "nobuffer",
-                "-flags",
-                "low_delay",
-                "-analyzeduration",
-                "0",
-                "-probesize",
-                "64",
-                "-i",
-                self.rtsp_url,
-                "-map",
-                "0:v:0",
-                "-frames:v",
-                "1",
-                "-q:v",
-                "2",
-                "-f",
-                "image2",
-                "-y",
-                str(tmp),
-            ]
-
-            result = subprocess.run(
-                command,
-                capture_output=True,
-                text=True,
-                timeout=settings.rtsp_capture_timeout,
-                check=False,
-            )
-
-            if result.returncode != 0:
-                raise RuntimeError(
-                    "ffmpeg RTSP frame capture failed"
+            if frame is not None and frame_at is not None:
+                frame_age_ms = int(
+                    (time.monotonic() - frame_at)
+                    * 1000
                 )
 
-            if not tmp.is_file():
-                raise RuntimeError(
-                    "ffmpeg did not create a frame"
-                )
+                if (
+                    frame_age_ms
+                    <= settings.rtsp_frame_max_age
+                    * 1000
+                ):
+                    tmp = target.with_name(
+                        target.stem + ".tmp.jpg"
+                    )
+                    tmp.write_bytes(frame)
+                    tmp.replace(target)
 
-            if tmp.read_bytes()[:2] != b"\xff\xd8":
-                raise RuntimeError(
-                    "RTSP frame is not JPEG"
-                )
+                    return (
+                        True,
+                        int(
+                            (time.monotonic() - started)
+                            * 1000
+                        ),
+                        None,
+                        frame_age_ms,
+                    )
 
-            tmp.replace(target)
+            if time.monotonic() >= deadline:
+                break
 
-            return (
-                True,
-                int((time.monotonic() - started) * 1000),
-                None,
-            )
+            time.sleep(0.02)
 
-        except subprocess.TimeoutExpired:
-            tmp.unlink(missing_ok=True)
-            return (
-                False,
-                int((time.monotonic() - started) * 1000),
-                "RTSP capture timed out",
-            )
-        except Exception as exc:
-            tmp.unlink(missing_ok=True)
-            return (
-                False,
-                int((time.monotonic() - started) * 1000),
-                str(exc),
-            )
+        status = self.rtsp_status()
+        error = status.get("last_error")
+
+        if not error:
+            error = "RTSP frame buffer is not ready"
+
+        return (
+            False,
+            int(
+                (time.monotonic() - started)
+                * 1000
+            ),
+            error,
+            status.get("frame_age_ms"),
+        )
 
     def _snapshot_http(self, target: Path):
         started = time.monotonic()
@@ -201,7 +400,10 @@ class YiCamera:
 
         return (
             False,
-            int((time.monotonic() - started) * 1000),
+            int(
+                (time.monotonic() - started)
+                * 1000
+            ),
             last_error,
         )
 
@@ -219,21 +421,25 @@ class YiCamera:
             return {
                 "online": True,
                 "duration_ms": int(
-                    (time.monotonic() - started) * 1000
+                    (time.monotonic() - started)
+                    * 1000
                 ),
                 "check": "tcp",
                 "port": 80,
+                "rtsp": self.rtsp_status(),
             }
 
         except Exception as exc:
             return {
                 "online": False,
                 "duration_ms": int(
-                    (time.monotonic() - started) * 1000
+                    (time.monotonic() - started)
+                    * 1000
                 ),
                 "check": "tcp",
                 "port": 80,
                 "error": str(exc),
+                "rtsp": self.rtsp_status(),
             }
 
 
