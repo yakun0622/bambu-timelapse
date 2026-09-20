@@ -3,11 +3,20 @@ import { computed, onMounted, onBeforeUnmount, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 import { authState, logout } from "./auth";
+import { api } from "./api";
 import { themeState, toggleTheme, useSystemTheme } from "./theme";
 
 const route = useRoute();
 const router = useRouter();
 const accountOpen = ref(false);
+const topbarStatus = ref({
+  printerOnline: false,
+  cameraOnline: false,
+  printerState: null
+});
+
+let statusTimer;
+let cameraStatusTimer;
 
 const authPage = computed(() =>
   route.path === "/login" ||
@@ -31,6 +40,31 @@ const userInitial = computed(() =>
     .toUpperCase()
 );
 
+async function refreshTopbarStatus() {
+  if (!authState.user || authPage.value) return;
+
+  try {
+    const status = await api("/api/status");
+    topbarStatus.value.printerOnline = Boolean(status.printer?.online);
+    topbarStatus.value.printerState = status.printer?.state || null;
+  } catch {
+    topbarStatus.value.printerOnline = false;
+  }
+}
+
+async function refreshCameraStatus() {
+  if (!authState.user || authPage.value) return;
+
+  try {
+    const result = await api("/api/camera/test", {
+      method: "POST"
+    });
+    topbarStatus.value.cameraOnline = Boolean(result?.online);
+  } catch {
+    topbarStatus.value.cameraOnline = false;
+  }
+}
+
 async function doLogout() {
   accountOpen.value = false;
   await logout();
@@ -49,10 +83,25 @@ function closeAccount(event) {
 
 onMounted(() => {
   document.addEventListener("click", closeAccount);
+
+  refreshTopbarStatus();
+  refreshCameraStatus();
+
+  statusTimer = setInterval(
+    refreshTopbarStatus,
+    15000
+  );
+
+  cameraStatusTimer = setInterval(
+    refreshCameraStatus,
+    30000
+  );
 });
 
 onBeforeUnmount(() => {
   document.removeEventListener("click", closeAccount);
+  clearInterval(statusTimer);
+  clearInterval(cameraStatusTimer);
 });
 </script>
 
@@ -85,11 +134,29 @@ onBeforeUnmount(() => {
     <div class="workspace">
       <header class="topbar">
         <div class="topbar-title">
-          <span>管理后台</span>
           <strong>{{ pageTitle }}</strong>
         </div>
 
         <div class="topbar-actions">
+          <div class="topbar-device-status">
+            <span
+              class="topbar-status-item"
+              :class="{ online: topbarStatus.printerOnline }"
+              title="拓竹打印机连接状态"
+            >
+              <i></i>
+              <span>打印机</span>
+            </span>
+
+            <span
+              class="topbar-status-item"
+              :class="{ online: topbarStatus.cameraOnline }"
+              title="小蚁摄像头连接状态"
+            >
+              <i></i>
+              <span>摄像头</span>
+            </span>
+          </div>
           <button
             class="theme-toggle"
             type="button"
