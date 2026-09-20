@@ -1,19 +1,10 @@
-from mqtt_client import BambuMQTTClient
-from state_manager import PrintStateManager
-
-
-def main():
-    print("Bambu Timelapse", flush=True)
-
-    state_manager = PrintStateManager()
-    mqtt_client = BambuMQTTClient(state_manager)
-
-    try:
-        mqtt_client.run()
-    except KeyboardInterrupt:
-        print("\nStopping...", flush=True)
-        mqtt_client.stop()
+import uvicorn
 
 
 if __name__ == "__main__":
-    main()
+    uvicorn.run(
+        "app.main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=False,
+    )
