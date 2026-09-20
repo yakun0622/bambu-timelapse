@@ -18,6 +18,8 @@ class Settings:
     yi_ip: str = os.getenv("YI_IP", "")
     yi_user: str = os.getenv("YI_USER", "admin")
     yi_password: str = os.getenv("YI_PASSWORD", "")
+    yi_rtsp_port: int = int(os.getenv("YI_RTSP_PORT", "554"))
+    yi_rtsp_path: str = os.getenv("YI_RTSP_PATH", "/ch0_0.h264")
     yi_rtsp_url: str = os.getenv("YI_RTSP_URL", "")
     capture_source: str = os.getenv("CAPTURE_SOURCE", "auto").strip().lower()
     rtsp_capture_timeout: float = float(
