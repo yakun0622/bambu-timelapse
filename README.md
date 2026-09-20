@@ -92,13 +92,18 @@ docker compose logs -f
 http://服务器IP:8000
 ```
 
-默认数据保存在：
+默认持久化数据保存在：
 
 ```text
 ./data/
-├── app.db
+├── db/
+│   └── app.db
 └── timelapse/
+    ├── layer_XXXX.jpg
+    └── timelapse.mp4
 ```
+
+Docker Compose 对数据库和资源文件使用独立宿主机映射，因此重建容器不会丢失历史数据。
 
 ## Python 本地运行
 
@@ -145,7 +150,7 @@ CAPTURE_EVERY_LAYERS=1
 AUTO_GENERATE_VIDEO=true
 TIMELAPSE_FPS=30
 TIMELAPSE_DIR=./data/timelapse
-DATABASE_PATH=./data/app.db
+DATABASE_PATH=./data/db/app.db
 WEB_DIST=./web/dist
 WEB_PORT=8000
 ```
