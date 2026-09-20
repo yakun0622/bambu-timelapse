@@ -289,6 +289,30 @@ class Database:
                     (job_id,),
                 )
 
+    def get_latest_snapshot(self, job_id=None):
+        with self.connect() as conn:
+            if job_id is not None:
+                row = conn.execute(
+                    """
+                    SELECT * FROM snapshots
+                    WHERE job_id=? AND status='SUCCESS'
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """,
+                    (job_id,),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    """
+                    SELECT * FROM snapshots
+                    WHERE status='SUCCESS'
+                    ORDER BY id DESC
+                    LIMIT 1
+                    """
+                ).fetchone()
+
+            return dict(row) if row else None
+
     def list_jobs(self, limit=100):
         with self.connect() as conn:
             rows = conn.execute(
