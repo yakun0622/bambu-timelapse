@@ -77,6 +77,24 @@ onMounted(async () => {
                 : "未配置"
             }}
           </dd>
+
+          <dt>抓拍来源</dt>
+          <dd>
+            {{
+              settings.camera.capture_source === "auto"
+                ? "RTSP 优先 / HTTP 回退"
+                : settings.camera.capture_source.toUpperCase()
+            }}
+          </dd>
+
+          <dt>RTSP 地址</dt>
+          <dd>
+            {{
+              settings.camera.rtsp_url_configured
+                ? "自定义"
+                : "自动使用 ch0_0.h264"
+            }}
+          </dd>
         </dl>
       </article>
 
@@ -93,7 +111,10 @@ onMounted(async () => {
           <dt>抓拍延迟</dt>
           <dd>{{ settings.capture.snapshot_delay }} 秒</dd>
 
-          <dt>失败重试</dt>
+          <dt>RTSP 超时</dt>
+          <dd>{{ settings.capture.rtsp_capture_timeout }} 秒</dd>
+
+          <dt>HTTP 失败重试</dt>
           <dd>{{ settings.capture.snapshot_retries }} 次</dd>
 
           <dt>抓拍间隔</dt>
