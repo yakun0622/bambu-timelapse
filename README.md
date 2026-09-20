@@ -12,7 +12,7 @@ The service listens to printer status updates from Bambu Cloud MQTT, tracks prin
 - Automatic print-job discovery and resume after service restart
 - Bambu `task_id` / `subtask_id` based job identity
 - Layer-change detection and automatic snapshots
-- Yi Hack HTTP snapshot integration
+- Yi Hack RTSP frame capture with HTTP snapshot fallback
 - Automatic timelapse generation with FFmpeg
 - SQLite persistence for jobs, snapshots, users, and sessions
 - Vue 3 management dashboard
@@ -71,7 +71,7 @@ The password and session data are stored in the persistent SQLite database, so r
                                 │
                                 ▼
                            Yi Camera
-                         HTTP Snapshot
+                      RTSP / HTTP Snapshot
                                 │
                                 ▼
                          Snapshot Files
@@ -186,6 +186,8 @@ A frame is captured after a real layer transition such as:
 
 Automatic capture also requires the print to be in an active printing state and not already complete.
 
+By default, frame acquisition uses `CAPTURE_SOURCE=auto`. The service first asks FFmpeg for a single frame from the Yi RTSP stream and, if that fails, falls back to the HTTP snapshot CGI. RTSP capture is usually much closer to the actual layer-change moment because it avoids waiting for the camera to generate a separate high-resolution still image.
+
 ## Quick Start with Docker
 
 Clone the repository:
@@ -261,6 +263,10 @@ YI_IP=192.168.2.194
 YI_USER=admin
 YI_PASSWORD=your_camera_password
 
+CAPTURE_SOURCE=auto
+YI_RTSP_URL=
+RTSP_CAPTURE_TIMEOUT=4
+
 AUTO_CAPTURE=true
 SNAPSHOT_DELAY=0.5
 SNAPSHOT_RETRIES=3
@@ -287,6 +293,9 @@ Main options:
 | `YI_IP` | Yi camera IP address |
 | `YI_USER` | Yi Hack HTTP username |
 | `YI_PASSWORD` | Yi Hack HTTP password |
+| `CAPTURE_SOURCE` | `auto`, `rtsp`, or `http`; `auto` tries RTSP first and falls back to HTTP |
+| `YI_RTSP_URL` | Optional custom RTSP URL; defaults to `rtsp://<YI_IP>/ch0_0.h264` |
+| `RTSP_CAPTURE_TIMEOUT` | Maximum time to wait for a single RTSP frame |
 | `AUTO_CAPTURE` | Enable automatic layer snapshots |
 | `SNAPSHOT_DELAY` | Delay before taking a snapshot |
 | `SNAPSHOT_RETRIES` | Number of snapshot retries |
