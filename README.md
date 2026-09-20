@@ -224,6 +224,38 @@ GET  /health
 
 敏感 Token 和摄像头密码不会通过 Settings API 返回给浏览器。
 
+## 任务唯一标识
+
+Cloud 打印任务优先使用 Bambu MQTT 返回的任务 ID 识别同一打印：
+
+```text
+subtask_id
+   ↓ 不存在
+task_id
+   ↓ 不存在 / 为 0
+本地 fallback key
+```
+
+数据库会保存：
+
+```text
+bambu_task_id
+bambu_subtask_id
+job_key
+```
+
+Cloud 任务的 `job_key` 形如：
+
+```text
+bambu:<device_id>:subtask:<subtask_id>
+```
+
+因此服务重启、Docker 重建或 MQTT 重连后，会优先根据同一个 Bambu Task/Subtask 恢复原任务，而不是创建新的 Job。
+
+本地 / SD 卡打印如果 Bambu 返回 `task_id=0`、`subtask_id=0`，则退化为持久化的本地任务 key，并继续结合层数与任务名称判断生命周期。
+
+数据库升级为自动迁移，不需要手动删除现有 `app.db`。
+
 ## 抓拍规则
 
 启动服务时如果打印已经进行到第 10 层：
