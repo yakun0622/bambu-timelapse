@@ -18,35 +18,98 @@ class CaptureService:
     def start(self):
         if self.running:
             return
+
         self.running = True
-        self.thread = threading.Thread(target=self._worker, daemon=True)
+        self.thread = threading.Thread(
+            target=self._worker,
+            daemon=True,
+        )
         self.thread.start()
 
     def stop(self):
         self.running = False
         self.queue.put(None)
 
-    def enqueue(self, job_id: int, job_dir: Path, layer: int, total=None):
-        self.queue.put((job_id, job_dir, layer, total))
+    def enqueue(
+        self,
+        job_id: int,
+        job_dir: Path,
+        layer: int,
+        total=None,
+    ):
+        self.queue.put(
+            (
+                job_id,
+                job_dir,
+                layer,
+                total,
+                time.monotonic(),
+            )
+        )
 
     def _worker(self):
         while self.running:
             item = self.queue.get()
+
             if item is None:
                 break
 
-            job_id, job_dir, layer, total = item
-            time.sleep(settings.snapshot_delay)
-            target = job_dir / f"layer_{layer:04d}.jpg"
+            (
+                job_id,
+                job_dir,
+                layer,
+                total,
+                triggered_at,
+            ) = item
+
+            target = (
+                job_dir
+                / f"layer_{layer:04d}.jpg"
+            )
 
             if target.exists():
                 continue
 
-            event_bus.emit("SNAPSHOT_STARTED", f"Capturing layer {layer}", {"job_id": job_id, "layer": layer})
-            ok, duration_ms, error, source = camera.snapshot(target)
+            event_bus.emit(
+                "SNAPSHOT_STARTED",
+                f"Capturing layer {layer}",
+                {
+                    "job_id": job_id,
+                    "layer": layer,
+                    "delay_ms": int(
+                        settings.snapshot_delay
+                        * 1000
+                    ),
+                },
+            )
+
+            if settings.snapshot_delay > 0:
+                time.sleep(settings.snapshot_delay)
+
+            (
+                ok,
+                acquisition_ms,
+                error,
+                source,
+                frame_age_ms,
+            ) = camera.snapshot(target)
+
+            duration_ms = int(
+                (time.monotonic() - triggered_at)
+                * 1000
+            )
 
             if ok:
-                db.add_snapshot(job_id, layer, target, "SUCCESS", duration_ms)
+                db.add_snapshot(
+                    job_id,
+                    layer,
+                    target,
+                    "SUCCESS",
+                    duration_ms=duration_ms,
+                    source=source,
+                    frame_age_ms=frame_age_ms,
+                )
+
                 event_bus.emit(
                     "SNAPSHOT_SUCCESS",
                     f"Snapshot saved for layer {layer}",
@@ -55,17 +118,33 @@ class CaptureService:
                         "layer": layer,
                         "path": str(target),
                         "duration_ms": duration_ms,
+                        "acquisition_ms": acquisition_ms,
+                        "frame_age_ms": frame_age_ms,
                         "source": source,
                     },
                 )
+
             else:
-                db.add_snapshot(job_id, layer, None, "FAILED", duration_ms, error)
+                db.add_snapshot(
+                    job_id,
+                    layer,
+                    None,
+                    "FAILED",
+                    duration_ms=duration_ms,
+                    error=error,
+                    source=source,
+                    frame_age_ms=frame_age_ms,
+                )
+
                 event_bus.emit(
                     "SNAPSHOT_FAILED",
                     f"Snapshot failed for layer {layer}",
                     {
                         "job_id": job_id,
                         "layer": layer,
+                        "duration_ms": duration_ms,
+                        "acquisition_ms": acquisition_ms,
+                        "frame_age_ms": frame_age_ms,
                         "error": error,
                         "source": source,
                     },
