@@ -1,146 +1,254 @@
-# bambu-timelapse
+# Bambu Timelapse
 
-基于 **Bambu Lab Cloud MQTT + 小蚁摄像头 Yi Hack + FFmpeg** 的 3D 打印延时摄影工具。
+A self-hosted 3D-print timelapse service built around **Bambu Lab Cloud MQTT**, **Yi Camera / Yi Hack**, **FastAPI**, **Vue 3**, **SQLite**, and **FFmpeg**.
 
-项目监听拓竹打印机的云端 MQTT 状态，自动识别打印开始、进度、换层和结束；每次检测到 `layer_num` 增加时调用小蚁摄像头 Snapshot 接口抓拍，任务结束后自动生成延时视频。
+The service listens to printer status updates from Bambu Cloud MQTT, tracks print jobs, detects layer changes, captures snapshots from a Yi camera, stores job history, and can automatically generate an MP4 timelapse when a print finishes.
 
-当前版本已经升级为完整服务：
+> This project is an independent community project and is not affiliated with, endorsed by, or sponsored by Bambu Lab or YI Technology.
 
-- FastAPI 后端
-- WebSocket 实时事件
-- Vue 3 Web Dashboard
-- SQLite 任务记录
-- Bambu Cloud MQTT
-- Yi Camera Snapshot
-- FFmpeg 自动合成
-- Docker Compose 一键部署
+## Features
 
-## 页面
+- Bambu Lab Cloud MQTT status monitoring
+- Automatic print-job discovery and resume after service restart
+- Bambu `task_id` / `subtask_id` based job identity
+- Layer-change detection and automatic snapshots
+- Yi Hack HTTP snapshot integration
+- Automatic timelapse generation with FFmpeg
+- SQLite persistence for jobs, snapshots, users, and sessions
+- Vue 3 management dashboard
+- Real-time WebSocket event stream
+- Light and dark themes with system-theme detection
+- Login protection with forced password change on first sign-in
+- Docker Compose deployment
+- Persistent database, snapshots, and generated videos
 
-Web 端使用统一中文界面，并增加登录保护。
+## Web Interface
 
-默认管理员账号：
+The web interface currently provides:
+
+- **Dashboard** — printer status, current task, camera status, latest snapshot, and live events
+- **Print Jobs** — job history, captured frames, task identifiers, and video downloads
+- **Devices** — printer information and Yi camera connectivity checks
+- **Settings** — current Bambu, camera, capture, and video configuration
+
+The current frontend UI is primarily Chinese, while this README is maintained in English.
+
+## Default Login
+
+The first installation creates a default administrator account:
 
 ```text
-账号：admin
-密码：admin
+Username: admin
+Password: admin
 ```
 
-首次登录后系统会强制修改默认密码，未完成密码修改前无法访问控制台、任务、设备和设置接口。
+On the first successful login, the administrator is required to change the default password before accessing the application.
 
-Web 端包含 4 个主要页面：
+Authentication uses:
 
-- **Dashboard**：当前打印、层数、进度、抓拍状态、实时事件
-- **Jobs**：历史打印任务、帧列表、视频下载
-- **Devices**：打印机状态、摄像头连接测试
-- **Settings**：查看当前 Bambu / Camera / Capture / Video 配置
+- HttpOnly session cookies
+- Persistent SQLite sessions
+- PBKDF2-SHA256 password hashing
+- Forced first-login password change
 
-Docker 默认访问：
+The password and session data are stored in the persistent SQLite database, so rebuilding the Docker container does not reset the administrator password.
+
+## Architecture
 
 ```text
-http://服务器IP:8000
+                    Bambu Lab Cloud
+                          │
+                          │ MQTT / TLS
+                          ▼
+                 Bambu MQTT Integration
+                          │
+                          ▼
+                    Print Service
+                    ┌─────┴─────┐
+                    │           │
+                    ▼           ▼
+               SQLite DB   Capture Queue
+                                │
+                                ▼
+                           Yi Camera
+                         HTTP Snapshot
+                                │
+                                ▼
+                         Snapshot Files
+                                │
+                                ▼
+                             FFmpeg
+                                │
+                                ▼
+                         Timelapse MP4
+
+                     FastAPI Backend
+                    ┌──────┴──────┐
+                    │             │
+                    ▼             ▼
+                 REST API      WebSocket
+                    │             │
+                    └──────┬──────┘
+                           ▼
+                       Vue 3 Web UI
 ```
 
-## 自动任务生命周期
+## Automatic Print Lifecycle
 
 ```text
 Bambu Cloud MQTT
         │
         ▼
- gcode_state=RUNNING
- + 有效 layer_num
+Receive printer state
         │
         ▼
-   自动创建 PrintJob
+Identify task/subtask
         │
         ▼
-   layer N -> N+1
+Resume existing job
+or create a new job
         │
         ▼
-     自动抓拍
+layer N -> N+1
         │
         ▼
- mc_percent -> 100%
- 等待 FINISH 确认
+Capture snapshot
         │
         ▼
- gcode_state=FINISH
+progress -> 100%
         │
         ▼
-   停止抓拍 / 保存任务
+Wait for FINISH
         │
         ▼
-      FFmpeg
+Close print job
         │
         ▼
-   timelapse.mp4
+Generate timelapse.mp4
 ```
 
-暂停时任务保持为 `PAUSED`，恢复后继续原任务；取消或失败时保留已抓拍图片但不自动生成正式成片。
+Paused jobs stay in a paused state and continue when printing resumes. Canceled or failed jobs keep their captured frames but do not automatically produce a final timelapse.
 
-## 文档
+## Print Job Identity
 
-- [小蚁摄像头刷机与配置](docs/YI_CAMERA_SETUP.md)
-- [Bambu Cloud Token 与关键参数获取](docs/BAMBU_CLOUD_SETUP.md)
-- [Docker 部署](docs/DOCKER.md)
+For cloud-based prints, the service prefers Bambu-provided identifiers instead of guessing task identity from only file names or layer numbers.
 
-## Docker 快速开始
+Priority:
+
+```text
+subtask_id
+   ↓ if unavailable
+task_id
+   ↓ if unavailable or "0"
+local fallback key
+```
+
+Stored fields include:
+
+```text
+bambu_task_id
+bambu_subtask_id
+job_key
+```
+
+A cloud job key is typically shaped like:
+
+```text
+bambu:<device_id>:subtask:<subtask_id>
+```
+
+This allows the service to reconnect to the same print after:
+
+- application restart
+- Docker container rebuild
+- MQTT reconnect
+- temporary service interruption
+
+For local or SD-card prints where Bambu reports `task_id=0` and `subtask_id=0`, the service falls back to locally generated identity logic.
+
+## Snapshot Logic
+
+The service does not capture immediately just because it starts while a print is already in progress.
+
+For example, if startup discovers:
+
+```text
+current layer = 86
+```
+
+no frame is captured immediately.
+
+A frame is captured after a real layer transition such as:
+
+```text
+86 -> 87
+```
+
+Automatic capture also requires the print to be in an active printing state and not already complete.
+
+## Quick Start with Docker
+
+Clone the repository:
 
 ```bash
 git clone https://github.com/yakun0622/bambu-timelapse.git
 cd bambu-timelapse
+```
 
+Create the environment file:
+
+```bash
 cp .env.example .env
 nano .env
-
-docker compose up -d --build
-docker compose logs -f
 ```
 
-打开：
+Start the application:
+
+```bash
+docker compose up -d --build
+```
+
+Follow logs:
+
+```bash
+docker compose logs -f --tail=200
+```
+
+Open the web interface:
 
 ```text
-http://服务器IP:8000
+http://SERVER_IP:8000
 ```
 
-默认持久化数据保存在：
+## Persistent Storage
+
+Docker Compose maps the database and generated media to the host:
 
 ```text
 ./data/
 ├── db/
 │   └── app.db
 └── timelapse/
-    ├── layer_XXXX.jpg
-    └── timelapse.mp4
+    └── <print-job>/
+        ├── layer_0001.jpg
+        ├── layer_0002.jpg
+        └── timelapse.mp4
 ```
 
-Docker Compose 对数据库和资源文件使用独立宿主机映射，因此重建容器不会丢失历史数据。
+The container uses:
 
-## Python 本地运行
-
-后端：
-
-```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-
-python main.py
+```text
+./data/db          -> /data/db
+./data/timelapse   -> /data/timelapse
 ```
 
-前端开发：
+Rebuilding or replacing the application container therefore does not remove the SQLite database, captured frames, or generated videos.
 
-```bash
-cd web
-npm install
-npm run dev
-```
+Do not delete the `data/` directory unless you intentionally want to remove persistent application data.
 
-Vite 开发服务器会代理 `/api` 和 `/ws` 到后端 `127.0.0.1:8000`。
+## Configuration
 
-生产环境推荐使用 Docker，镜像构建阶段会自动执行 Vue 构建并由 FastAPI 提供静态页面。
-
-## 配置
+Example:
 
 ```env
 BAMBU_MQTT_HOST=cn.mqtt.bambulab.com
@@ -160,21 +268,60 @@ CAPTURE_EVERY_LAYERS=1
 
 AUTO_GENERATE_VIDEO=true
 TIMELAPSE_FPS=30
+
 TIMELAPSE_DIR=./data/timelapse
 DATABASE_PATH=./data/db/app.db
 WEB_DIST=./web/dist
 WEB_PORT=8000
 ```
 
-其中：
+Main options:
 
-- `AUTO_CAPTURE`：自动抓拍开关
-- `SNAPSHOT_DELAY`：换层后等待时间
-- `CAPTURE_EVERY_LAYERS`：每 N 层抓拍一次
-- `AUTO_GENERATE_VIDEO`：打印完成自动生成 MP4
-- `TIMELAPSE_FPS`：成片帧率
+| Variable | Description |
+| --- | --- |
+| `BAMBU_MQTT_HOST` | Bambu Cloud MQTT hostname |
+| `BAMBU_MQTT_PORT` | MQTT TLS port |
+| `BAMBU_USER_ID` | Bambu account user ID |
+| `BAMBU_ACCESS_TOKEN` | Bambu Cloud access token |
+| `BAMBU_DEVICE_ID` | Printer device ID |
+| `YI_IP` | Yi camera IP address |
+| `YI_USER` | Yi Hack HTTP username |
+| `YI_PASSWORD` | Yi Hack HTTP password |
+| `AUTO_CAPTURE` | Enable automatic layer snapshots |
+| `SNAPSHOT_DELAY` | Delay before taking a snapshot |
+| `SNAPSHOT_RETRIES` | Number of snapshot retries |
+| `CAPTURE_EVERY_LAYERS` | Capture every N layers |
+| `AUTO_GENERATE_VIDEO` | Generate MP4 automatically after completion |
+| `TIMELAPSE_FPS` | Output video frame rate |
+| `DATABASE_PATH` | SQLite database path |
+| `TIMELAPSE_DIR` | Snapshot and video storage directory |
+| `WEB_PORT` | Host port for the web application |
 
-## 项目结构
+## Local Development
+
+Backend:
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+python main.py
+```
+
+Frontend:
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+The Vite development server proxies backend API and WebSocket traffic to the local FastAPI service.
+
+For normal deployments, Docker Compose is recommended.
+
+## Project Structure
 
 ```text
 bambu-timelapse/
@@ -188,6 +335,7 @@ bambu-timelapse/
 │   │   └── yi/
 │   │       └── camera.py
 │   ├── services/
+│   │   ├── auth_service.py
 │   │   ├── capture_service.py
 │   │   ├── print_service.py
 │   │   └── timelapse_service.py
@@ -203,8 +351,12 @@ bambu-timelapse/
 │       │   ├── Dashboard.vue
 │       │   ├── Jobs.vue
 │       │   ├── Devices.vue
-│       │   └── Settings.vue
-│       └── ...
+│       │   ├── Settings.vue
+│       │   ├── Login.vue
+│       │   └── ChangePassword.vue
+│       ├── api.js
+│       ├── auth.js
+│       └── theme.js
 ├── docs/
 ├── Dockerfile
 ├── docker-compose.yml
@@ -212,16 +364,20 @@ bambu-timelapse/
 └── requirements.txt
 ```
 
-## API
+## API Overview
 
-主要接口：
+Authentication:
 
 ```text
 POST /api/auth/login
 GET  /api/auth/me
 POST /api/auth/change-password
 POST /api/auth/logout
+```
 
+Application:
+
+```text
 GET  /api/status
 GET  /api/printer
 GET  /api/camera
@@ -230,6 +386,7 @@ POST /api/camera/snapshot
 
 GET  /api/jobs
 GET  /api/jobs/{id}
+GET  /api/jobs/{id}/frames/{filename}
 GET  /api/jobs/{id}/video
 
 GET  /api/settings
@@ -238,76 +395,15 @@ WS   /ws
 GET  /health
 ```
 
-除登录、当前用户和修改密码接口外，业务 API 与 WebSocket 都需要登录。
+Except for the authentication endpoints required to sign in and change the initial password, application APIs and the WebSocket event stream require an authenticated session.
 
-登录会使用 HttpOnly Session Cookie，Session 与管理员账号保存在 SQLite 中，因此 Docker 重建后管理员密码不会恢复成默认值。
+Sensitive tokens and camera passwords are not returned by the Settings API.
 
-敏感 Token 和摄像头密码不会通过 Settings API 返回给浏览器。
+## Security Notes
 
-## 任务唯一标识
+Do not commit a real `.env` file.
 
-Cloud 打印任务优先使用 Bambu MQTT 返回的任务 ID 识别同一打印：
-
-```text
-subtask_id
-   ↓ 不存在
-task_id
-   ↓ 不存在 / 为 0
-本地 fallback key
-```
-
-数据库会保存：
-
-```text
-bambu_task_id
-bambu_subtask_id
-job_key
-```
-
-Cloud 任务的 `job_key` 形如：
-
-```text
-bambu:<device_id>:subtask:<subtask_id>
-```
-
-因此服务重启、Docker 重建或 MQTT 重连后，会优先根据同一个 Bambu Task/Subtask 恢复原任务，而不是创建新的 Job。
-
-本地 / SD 卡打印如果 Bambu 返回 `task_id=0`、`subtask_id=0`，则退化为持久化的本地任务 key，并继续结合层数与任务名称判断生命周期。
-
-数据库升级为自动迁移，不需要手动删除现有 `app.db`。
-
-## 抓拍规则
-
-启动服务时如果打印已经进行到第 10 层：
-
-```text
-INITIAL = 10
-```
-
-不会立即拍一张。
-
-只有真正发生：
-
-```text
-10 -> 11
-```
-
-才会触发抓拍。
-
-同时要求：
-
-```text
-gcode_state == RUNNING
-progress < 100
-```
-
-这样暂停、完成阶段不会继续产生无效帧。
-
-## 安全
-
-不要提交真实 `.env`。
-
-敏感信息：
+Treat the following values as secrets:
 
 ```text
 BAMBU_ACCESS_TOKEN
@@ -315,15 +411,37 @@ Bambu LAN Access Code
 YI_PASSWORD
 ```
 
-如果已经公开，请及时更换。
+If any credential has been exposed publicly, rotate it before continuing to use the service.
 
-## 参考项目
+If you expose this project outside your trusted LAN, use HTTPS and review the deployment security carefully before doing so.
 
-- https://github.com/alienatedsec/yi-hack-v5
-- https://github.com/roleoroleo/yi-hack-Allwinner
-- https://github.com/coelacant1/Bambu-Lab-Cloud-API
-- https://github.com/coelacant1/Bambu-Lab-Cloud-API/pull/12
+## Related and Reference Projects
 
-## Disclaimer
+This project was made possible by public documentation, reverse-engineering work, and community projects around Bambu Lab and Yi cameras.
 
-本项目依赖非官方公开的 Bambu Cloud API / MQTT 协议实现，以及第三方 Yi Hack 固件。相关云端协议、认证方式或设备固件变化后，本项目可能需要同步调整。
+Useful references include:
+
+- [yi-hack-v5](https://github.com/alienatedsec/yi-hack-v5)
+- [yi-hack-Allwinner](https://github.com/roleoroleo/yi-hack-Allwinner)
+- [Bambu-Lab-Cloud-API](https://github.com/coelacant1/Bambu-Lab-Cloud-API)
+- [OpenBambuAPI](https://github.com/PhilosophersStone/openbambuapi)
+
+These projects may contain broader protocol documentation, device support, reverse-engineering notes, or more complete implementations for their respective areas. Please consult their documentation and licenses independently.
+
+## License
+
+Licensed under the **Apache License 2.0**.
+
+See [LICENSE](LICENSE) for the full license text.
+
+## Learning and Experimental Use Notice
+
+This repository is primarily intended for **learning, research, experimentation, and personal reference**.
+
+It should not be treated as an official Bambu Lab or Yi Camera SDK, a guaranteed production-ready service, or a complete implementation of their cloud/device protocols.
+
+The project relies on unofficially documented or community-researched interfaces. Cloud APIs, MQTT payloads, authentication behavior, camera firmware behavior, and device protocols may change at any time and may break compatibility without notice.
+
+If you need a more complete or production-oriented implementation, use this repository as a reference and also review other established open-source projects in the Bambu Lab, MQTT, camera, and timelapse ecosystems. Compare their protocol handling, security model, device compatibility, error recovery, testing strategy, and licensing before building a production deployment.
+
+You are responsible for evaluating the security, privacy, legal, warranty, network, and device risks of your own deployment. Respect the terms of service, software licenses, network policies, and applicable laws for every third-party service or device you use.
