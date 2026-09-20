@@ -60,6 +60,7 @@ class Database:
                     source TEXT,
                     frame_age_ms INTEGER,
                     frame_offset INTEGER,
+                    rewind_ms INTEGER,
                     frame_before_trigger_ms INTEGER,
                     error TEXT,
                     UNIQUE(job_id, layer)
@@ -92,6 +93,7 @@ class Database:
             self._ensure_column(conn, "snapshots", "source", "TEXT")
             self._ensure_column(conn, "snapshots", "frame_age_ms", "INTEGER")
             self._ensure_column(conn, "snapshots", "frame_offset", "INTEGER")
+            self._ensure_column(conn, "snapshots", "rewind_ms", "INTEGER")
             self._ensure_column(
                 conn,
                 "snapshots",
@@ -264,6 +266,7 @@ class Database:
         source=None,
         frame_age_ms=None,
         frame_offset=None,
+        rewind_ms=None,
         frame_before_trigger_ms=None,
     ):
         now = datetime.now(timezone.utc).isoformat()
@@ -287,10 +290,11 @@ class Database:
                     source,
                     frame_age_ms,
                     frame_offset,
+                    rewind_ms,
                     frame_before_trigger_ms,
                     error
                 )
-                VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     job_id,
@@ -302,6 +306,7 @@ class Database:
                     source,
                     frame_age_ms,
                     frame_offset,
+                    rewind_ms,
                     frame_before_trigger_ms,
                     error,
                 ),
