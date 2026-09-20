@@ -11,10 +11,14 @@ services:
     environment:
       PYTHONUNBUFFERED: "1"
       TIMELAPSE_DIR: /data/timelapse
-      DATABASE_PATH: /data/app.db
+      DATABASE_PATH: /data/db/app.db
       WEB_DIST: /app/web/dist
       TZ: ${TZ:-Asia/Shanghai}
     ports:
       - "${WEB_PORT:-8000}:8000"
     volumes:
-      - ./data:/data
+      # SQLite database
+      - ./data/db:/data/db
+
+      # Captured images and generated videos
+      - ./data/timelapse:/data/timelapse
