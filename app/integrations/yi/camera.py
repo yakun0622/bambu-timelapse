@@ -280,6 +280,8 @@ class YiCamera:
                 duration_ms,
                 error,
                 frame_age_ms,
+                frame_offset_applied,
+                frame_before_trigger_ms,
             ) = self._snapshot_rtsp_buffer(
                 target,
                 trigger_at=trigger_at,
