@@ -234,13 +234,17 @@ function eventMessage(event) {
       const duration = d.duration_ms !== undefined
         ? ` · ${d.duration_ms} ms`
         : "";
+      const frameAge = d.frame_age_ms !== null
+        && d.frame_age_ms !== undefined
+        ? ` · 帧龄 ${d.frame_age_ms} ms`
+        : "";
       const prefix = d.layer
         ? `第 ${d.layer} 层抓拍完成`
         : "抓拍完成";
 
       return source
-        ? `${prefix} · ${source}${duration}`
-        : `${prefix}${duration}`;
+        ? `${prefix} · ${source}${duration}${frameAge}`
+        : `${prefix}${duration}${frameAge}`;
     }
     case "SNAPSHOT_FAILED":
       return d.layer ? `第 ${d.layer} 层抓拍失败` : "抓拍失败";
@@ -495,6 +499,48 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
+          <div
+            v-if="data.camera?.capture_source !== 'http'"
+            class="rtsp-health-strip"
+          >
+            <div>
+              <small>RTSP 状态</small>
+              <strong
+                :class="data.camera?.rtsp?.ready ? 'health-good' : 'health-warn'"
+              >
+                {{
+                  data.camera?.rtsp?.ready
+                    ? "实时缓冲正常"
+                    : data.camera?.rtsp?.connected
+                      ? "等待最新帧"
+                      : "未连接"
+                }}
+              </strong>
+            </div>
+
+            <div>
+              <small>最新帧龄</small>
+              <strong>
+                {{
+                  data.camera?.rtsp?.frame_age_ms !== null
+                  && data.camera?.rtsp?.frame_age_ms !== undefined
+                    ? data.camera.rtsp.frame_age_ms + " ms"
+                    : "—"
+                }}
+              </strong>
+            </div>
+
+            <div>
+              <small>已缓存帧</small>
+              <strong>{{ data.camera?.rtsp?.frames ?? 0 }}</strong>
+            </div>
+
+            <div>
+              <small>重连次数</small>
+              <strong>{{ data.camera?.rtsp?.reconnects ?? 0 }}</strong>
+            </div>
+          </div>
+
           <div class="primary-divider"></div>
 
           <div class="snapshot-inline-head">
@@ -535,6 +581,7 @@ onBeforeUnmount(() => {
                 <small>抓拍层数</small>
                 <strong>第 {{ data.latest_snapshot.layer }} 层</strong>
               </div>
+
               <div>
                 <small>抓拍耗时</small>
                 <strong>
@@ -545,6 +592,19 @@ onBeforeUnmount(() => {
                   }}
                 </strong>
               </div>
+
+              <div>
+                <small>帧龄</small>
+                <strong>
+                  {{
+                    data.latest_snapshot.frame_age_ms !== null
+                    && data.latest_snapshot.frame_age_ms !== undefined
+                      ? data.latest_snapshot.frame_age_ms + " ms"
+                      : "—"
+                  }}
+                </strong>
+              </div>
+
               <div>
                 <small>抓拍时间</small>
                 <strong>{{ formatTime(data.latest_snapshot.captured_at) }}</strong>
