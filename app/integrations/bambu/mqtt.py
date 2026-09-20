@@ -31,22 +31,39 @@ class BambuMQTT:
         self.client.on_message = self._on_message
 
     def start(self):
-        self.client.connect(settings.mqtt_host, settings.mqtt_port, keepalive=60)
+        # connect_async keeps the Web/API service available even when
+        # Bambu Cloud is temporarily unreachable.
+        self.client.connect_async(
+            settings.mqtt_host,
+            settings.mqtt_port,
+            keepalive=60,
+        )
         self.client.loop_start()
+        event_bus.emit(
+            "MQTT_CONNECTING",
+            f"Connecting to {settings.mqtt_host}:{settings.mqtt_port}",
+        )
 
     def stop(self):
-        self.client.loop_stop()
         self.client.disconnect()
+        self.client.loop_stop()
 
     def _on_connect(self, client, userdata, flags, reason_code, properties):
         self.connected = True
         topic = f"device/{settings.bambu_device_id}/report"
         client.subscribe(topic, qos=0)
-        event_bus.emit("MQTT_CONNECTED", f"MQTT connected: {reason_code}", {"topic": topic})
+        event_bus.emit(
+            "MQTT_CONNECTED",
+            f"MQTT connected: {reason_code}",
+            {"topic": topic},
+        )
 
     def _on_disconnect(self, client, userdata, disconnect_flags, reason_code, properties):
         self.connected = False
-        event_bus.emit("MQTT_DISCONNECTED", f"MQTT disconnected: {reason_code}")
+        event_bus.emit(
+            "MQTT_DISCONNECTED",
+            f"MQTT disconnected: {reason_code}",
+        )
 
     def _on_message(self, client, userdata, msg):
         try:
