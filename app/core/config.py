@@ -36,8 +36,9 @@ class Settings:
         10,
         int(os.getenv("RTSP_HISTORY_FRAMES", "60")),
     )
-    rtsp_capture_frame_offset: int = int(
-        os.getenv("RTSP_CAPTURE_FRAME_OFFSET", "-5")
+    capture_rewind_ms: int = max(
+        0,
+        int(os.getenv("CAPTURE_REWIND_MS", "1000")),
     )
 
     snapshot_delay: float = float(os.getenv("SNAPSHOT_DELAY", "0.5"))
