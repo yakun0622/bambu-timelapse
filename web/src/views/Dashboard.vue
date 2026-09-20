@@ -22,8 +22,11 @@ const isRunning = computed(() => data.value.printer?.state === "RUNNING");
 function stateLabel(value) {
   const labels = {
     RUNNING: "打印中",
+    PRINTING: "打印中",
     PAUSE: "已暂停",
+    PAUSED: "已暂停",
     FINISH: "已完成",
+    FINISHED: "已完成",
     FAILED: "失败",
     CANCELED: "已取消",
     CANCEL: "已取消",
