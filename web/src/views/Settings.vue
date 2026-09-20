@@ -3,6 +3,7 @@ import { onMounted, ref } from "vue";
 import { api } from "../api";
 
 const settings = ref(null);
+
 onMounted(async () => {
   settings.value = await api("/api/settings");
 });
@@ -12,48 +13,117 @@ onMounted(async () => {
   <section>
     <div class="page-head">
       <div>
-        <p class="eyebrow">CONFIGURATION</p>
-        <h1>Settings</h1>
-        <p>当前配置来自 .env。敏感凭据不会返回到浏览器。</p>
+        <p class="eyebrow">系统配置</p>
+        <h1>设置</h1>
+        <p>当前配置来自 .env，敏感凭据不会返回到浏览器。</p>
       </div>
     </div>
 
     <div v-if="settings" class="grid two">
       <article class="card">
-        <div class="card-title"><span>Bambu Cloud</span><span>MQTT</span></div>
+        <div class="card-title">
+          <span>Bambu Cloud</span>
+          <span>MQTT</span>
+        </div>
+
         <dl>
-          <dt>Host</dt><dd>{{ settings.bambu.mqtt_host }}:{{ settings.bambu.mqtt_port }}</dd>
-          <dt>Device ID</dt><dd>{{ settings.bambu.device_id || "—" }}</dd>
-          <dt>User ID</dt><dd>{{ settings.bambu.user_id_configured ? "Configured" : "Missing" }}</dd>
-          <dt>Access Token</dt><dd>{{ settings.bambu.access_token_configured ? "Configured" : "Missing" }}</dd>
+          <dt>服务器</dt>
+          <dd>
+            {{ settings.bambu.mqtt_host }}:
+            {{ settings.bambu.mqtt_port }}
+          </dd>
+
+          <dt>设备 ID</dt>
+          <dd>{{ settings.bambu.device_id || "—" }}</dd>
+
+          <dt>用户 ID</dt>
+          <dd>
+            {{
+              settings.bambu.user_id_configured
+                ? "已配置"
+                : "未配置"
+            }}
+          </dd>
+
+          <dt>访问令牌</dt>
+          <dd>
+            {{
+              settings.bambu.access_token_configured
+                ? "已配置"
+                : "未配置"
+            }}
+          </dd>
         </dl>
       </article>
 
       <article class="card">
-        <div class="card-title"><span>Camera</span><span>Yi Hack</span></div>
+        <div class="card-title">
+          <span>小蚁摄像头</span>
+          <span>Yi Hack</span>
+        </div>
+
         <dl>
-          <dt>IP</dt><dd>{{ settings.camera.ip }}</dd>
-          <dt>User</dt><dd>{{ settings.camera.user }}</dd>
-          <dt>Password</dt><dd>{{ settings.camera.password_configured ? "Configured" : "Missing" }}</dd>
+          <dt>IP 地址</dt>
+          <dd>{{ settings.camera.ip }}</dd>
+
+          <dt>用户名</dt>
+          <dd>{{ settings.camera.user }}</dd>
+
+          <dt>密码</dt>
+          <dd>
+            {{
+              settings.camera.password_configured
+                ? "已配置"
+                : "未配置"
+            }}
+          </dd>
         </dl>
       </article>
 
       <article class="card">
-        <div class="card-title"><span>Capture</span><span>Automation</span></div>
+        <div class="card-title">
+          <span>自动抓拍</span>
+          <span>自动化</span>
+        </div>
+
         <dl>
-          <dt>Auto Capture</dt><dd>{{ settings.capture.auto_capture ? "On" : "Off" }}</dd>
-          <dt>Delay</dt><dd>{{ settings.capture.snapshot_delay }} s</dd>
-          <dt>Retries</dt><dd>{{ settings.capture.snapshot_retries }}</dd>
-          <dt>Every</dt><dd>{{ settings.capture.capture_every_layers }} layer(s)</dd>
+          <dt>自动抓拍</dt>
+          <dd>{{ settings.capture.auto_capture ? "开启" : "关闭" }}</dd>
+
+          <dt>抓拍延迟</dt>
+          <dd>{{ settings.capture.snapshot_delay }} 秒</dd>
+
+          <dt>失败重试</dt>
+          <dd>{{ settings.capture.snapshot_retries }} 次</dd>
+
+          <dt>抓拍间隔</dt>
+          <dd>
+            每 {{ settings.capture.capture_every_layers }} 层
+          </dd>
         </dl>
       </article>
 
       <article class="card">
-        <div class="card-title"><span>Video</span><span>FFmpeg</span></div>
+        <div class="card-title">
+          <span>延时视频</span>
+          <span>FFmpeg</span>
+        </div>
+
         <dl>
-          <dt>Auto Generate</dt><dd>{{ settings.video.auto_generate_video ? "On" : "Off" }}</dd>
-          <dt>FPS</dt><dd>{{ settings.video.fps }}</dd>
-          <dt>Directory</dt><dd>{{ settings.video.directory }}</dd>
+          <dt>自动生成</dt>
+          <dd>
+            {{
+              settings.video.auto_generate_video
+                ? "开启"
+                : "关闭"
+            }}
+          </dd>
+
+          <dt>视频帧率</dt>
+          <dd>{{ settings.video.fps }} FPS</dd>
+
+          <dt>保存目录</dt>
+          <dd>{{ settings.video.directory }}</dd>
         </dl>
       </article>
     </div>
