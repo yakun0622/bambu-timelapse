@@ -8,6 +8,13 @@ from app.core.config import settings
 from app.core.events import event_bus
 
 
+mqtt_state = {
+    "connected": False,
+    "last_connected_at": None,
+    "last_message_at": None,
+}
+
+
 class BambuMQTT:
     def __init__(self, on_print_data):
         self.on_print_data = on_print_data
@@ -78,6 +85,8 @@ class BambuMQTT:
 
     def _on_connect(self, client, userdata, flags, reason_code, properties):
         self.connected = True
+        mqtt_state["connected"] = True
+        mqtt_state["last_connected_at"] = time.time()
         topic = f"device/{settings.bambu_device_id}/report"
         client.subscribe(topic, qos=0)
 
@@ -95,6 +104,7 @@ class BambuMQTT:
 
     def _on_disconnect(self, client, userdata, disconnect_flags, reason_code, properties):
         self.connected = False
+        mqtt_state["connected"] = False
         event_bus.emit(
             "MQTT_DISCONNECTED",
             f"MQTT disconnected: {reason_code}",
@@ -105,6 +115,8 @@ class BambuMQTT:
             payload = json.loads(msg.payload.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError):
             return
+
+        mqtt_state["last_message_at"] = time.time()
 
         print_data = payload.get("print")
         if isinstance(print_data, dict):
