@@ -216,7 +216,7 @@ def manual_snapshot():
         / f"manual_{layer:04d}.jpg"
     )
 
-    ok, duration_ms, error = camera.snapshot(
+    ok, duration_ms, error, source = camera.snapshot(
         manual_path
     )
 
@@ -234,6 +234,8 @@ def manual_snapshot():
             "layer": layer,
             "path": str(manual_path),
             "manual": True,
+            "source": source,
+            "duration_ms": duration_ms,
         },
     )
 
@@ -241,6 +243,7 @@ def manual_snapshot():
         "ok": True,
         "path": str(manual_path),
         "duration_ms": duration_ms,
+        "source": source,
     }
 
 
@@ -323,12 +326,15 @@ def get_settings():
             "ip": settings.yi_ip,
             "user": settings.yi_user,
             "password_configured": bool(settings.yi_password),
+            "capture_source": settings.capture_source,
+            "rtsp_url_configured": bool(settings.yi_rtsp_url),
         },
         "capture": {
             "auto_capture": settings.auto_capture,
             "snapshot_delay": settings.snapshot_delay,
             "snapshot_retries": settings.snapshot_retries,
             "capture_every_layers": settings.capture_every_layers,
+            "rtsp_capture_timeout": settings.rtsp_capture_timeout,
         },
         "video": {
             "auto_generate_video": settings.auto_generate_video,
