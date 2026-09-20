@@ -3,6 +3,7 @@ import { computed, onMounted, onBeforeUnmount, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 import { authState, logout } from "./auth";
+import { themeState, toggleTheme, useSystemTheme } from "./theme";
 
 const route = useRoute();
 const router = useRouter();
@@ -89,6 +90,31 @@ onBeforeUnmount(() => {
         </div>
 
         <div class="topbar-actions">
+          <button
+            class="theme-toggle"
+            type="button"
+            :title="
+              themeState.preference === 'system'
+                ? '当前跟随系统主题，点击切换主题'
+                : '点击切换主题，双击恢复跟随系统'
+            "
+            @click="toggleTheme"
+            @dblclick="useSystemTheme"
+          >
+            <span class="theme-icon" aria-hidden="true">
+              {{ themeState.resolved === "dark" ? "☾" : "☀" }}
+            </span>
+            <span class="theme-label">
+              {{ themeState.resolved === "dark" ? "夜间" : "白天" }}
+            </span>
+            <span
+              v-if="themeState.preference === 'system'"
+              class="theme-system-mark"
+            >
+              系统
+            </span>
+          </button>
+
           <div class="topbar-account">
             <button
               class="account-trigger"
