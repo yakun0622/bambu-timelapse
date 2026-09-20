@@ -10,7 +10,7 @@ from app.core.events import event_bus
 from app.integrations.bambu.mqtt import BambuMQTT
 from app.services.capture_service import capture_service
 from app.services.print_service import print_service
-from app.web.api import router as api_router
+from app.web.api import auth_router, router as api_router
 from app.web.websocket import router as ws_router
 
 mqtt_service = BambuMQTT(print_service.update)
@@ -27,6 +27,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Bambu Timelapse", version="0.2.0", lifespan=lifespan)
+app.include_router(auth_router)
 app.include_router(api_router)
 app.include_router(ws_router)
 
