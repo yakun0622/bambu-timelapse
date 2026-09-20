@@ -49,6 +49,12 @@ onMounted(load);
             <div><small>Frames</small><strong>{{ selected.frame_count }}</strong></div>
             <div><small>Failed</small><strong>{{ selected.failed_frames }}</strong></div>
           </div>
+
+          <dl class="identity-list">
+            <dt>Task ID</dt><dd>{{ selected.bambu_task_id || "—" }}</dd>
+            <dt>Subtask ID</dt><dd>{{ selected.bambu_subtask_id || "—" }}</dd>
+            <dt>Job Key</dt><dd>{{ selected.job_key || "—" }}</dd>
+          </dl>
           <a v-if="selected.video_path" class="button link-button" :href="`/api/jobs/${selected.id}/video`">Download MP4</a>
           <div class="frame-grid">
             <img
