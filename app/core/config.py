@@ -18,6 +18,11 @@ class Settings:
     yi_ip: str = os.getenv("YI_IP", "")
     yi_user: str = os.getenv("YI_USER", "admin")
     yi_password: str = os.getenv("YI_PASSWORD", "")
+    yi_rtsp_url: str = os.getenv("YI_RTSP_URL", "")
+    capture_source: str = os.getenv("CAPTURE_SOURCE", "auto").strip().lower()
+    rtsp_capture_timeout: float = float(
+        os.getenv("RTSP_CAPTURE_TIMEOUT", "4")
+    )
 
     snapshot_delay: float = float(os.getenv("SNAPSHOT_DELAY", "0.5"))
     snapshot_retries: int = int(os.getenv("SNAPSHOT_RETRIES", "3"))
