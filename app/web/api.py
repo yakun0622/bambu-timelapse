@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 from app.core.config import settings
 from app.core.events import event_bus
+from app.integrations.bambu.mqtt import mqtt_state
 from app.integrations.yi.camera import camera
 from app.services.auth_service import auth_service
 from app.services.print_service import print_service
@@ -150,12 +151,31 @@ def status():
         else None
     )
 
+    latest_snapshot = db.get_latest_snapshot(
+        current.get("job_id")
+    )
+
+    if latest_snapshot:
+        latest_snapshot = {
+            **latest_snapshot,
+            "url": (
+                f"/api/jobs/{latest_snapshot['job_id']}/frames/"
+                f"{Path(latest_snapshot['file_path']).name}"
+            ),
+        }
+
     return {
-        "printer": current,
+        "printer": {
+            **current,
+            "online": bool(mqtt_state["connected"]),
+            "last_message_at": mqtt_state["last_message_at"],
+        },
         "camera": {
             "ip": settings.yi_ip,
+            "configured": bool(settings.yi_ip),
         },
         "job": job,
+        "latest_snapshot": latest_snapshot,
         "events": event_bus.recent(20),
     }
 
