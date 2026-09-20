@@ -92,7 +92,12 @@ class CaptureService:
                 error,
                 source,
                 frame_age_ms,
-            ) = camera.snapshot(target)
+                frame_offset,
+                frame_before_trigger_ms,
+            ) = camera.snapshot(
+                target,
+                trigger_at=triggered_at,
+            )
 
             duration_ms = int(
                 (time.monotonic() - triggered_at)
@@ -108,6 +113,8 @@ class CaptureService:
                     duration_ms=duration_ms,
                     source=source,
                     frame_age_ms=frame_age_ms,
+                    frame_offset=frame_offset,
+                    frame_before_trigger_ms=frame_before_trigger_ms,
                 )
 
                 event_bus.emit(
@@ -120,6 +127,8 @@ class CaptureService:
                         "duration_ms": duration_ms,
                         "acquisition_ms": acquisition_ms,
                         "frame_age_ms": frame_age_ms,
+                        "frame_offset": frame_offset,
+                        "frame_before_trigger_ms": frame_before_trigger_ms,
                         "source": source,
                     },
                 )
@@ -134,6 +143,8 @@ class CaptureService:
                     error=error,
                     source=source,
                     frame_age_ms=frame_age_ms,
+                    frame_offset=frame_offset,
+                    frame_before_trigger_ms=frame_before_trigger_ms,
                 )
 
                 event_bus.emit(
@@ -145,6 +156,8 @@ class CaptureService:
                         "duration_ms": duration_ms,
                         "acquisition_ms": acquisition_ms,
                         "frame_age_ms": frame_age_ms,
+                        "frame_offset": frame_offset,
+                        "frame_before_trigger_ms": frame_before_trigger_ms,
                         "error": error,
                         "source": source,
                     },

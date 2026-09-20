@@ -238,13 +238,22 @@ function eventMessage(event) {
         && d.frame_age_ms !== undefined
         ? ` · 帧龄 ${d.frame_age_ms} ms`
         : "";
+      const rewind = d.frame_offset !== null
+        && d.frame_offset !== undefined
+        && d.frame_offset < 0
+        ? ` · 回溯 ${Math.abs(d.frame_offset)} 帧`
+        : "";
+      const beforeTrigger = d.frame_before_trigger_ms !== null
+        && d.frame_before_trigger_ms !== undefined
+        ? ` · 触发前 ${d.frame_before_trigger_ms} ms`
+        : "";
       const prefix = d.layer
         ? `第 ${d.layer} 层抓拍完成`
         : "抓拍完成";
 
       return source
-        ? `${prefix} · ${source}${duration}${frameAge}`
-        : `${prefix}${duration}${frameAge}`;
+        ? `${prefix} · ${source}${duration}${rewind}${beforeTrigger}${frameAge}`
+        : `${prefix}${duration}${rewind}${beforeTrigger}${frameAge}`;
     }
     case "SNAPSHOT_FAILED":
       return d.layer ? `第 ${d.layer} 层抓拍失败` : "抓拍失败";
@@ -556,6 +565,24 @@ onBeforeUnmount(() => {
                   }}
                 </template>
               </strong>
+              <small
+                v-if="
+                  data.latest_snapshot?.frame_offset !== null
+                  && data.latest_snapshot?.frame_offset !== undefined
+                  && data.latest_snapshot.frame_offset < 0
+                "
+                class="snapshot-rewind"
+              >
+                回溯 {{ Math.abs(data.latest_snapshot.frame_offset) }} 帧
+                <template
+                  v-if="
+                    data.latest_snapshot.frame_before_trigger_ms !== null
+                    && data.latest_snapshot.frame_before_trigger_ms !== undefined
+                  "
+                >
+                  · 触发前 {{ data.latest_snapshot.frame_before_trigger_ms }} ms
+                </template>
+              </small>
               <strong v-else>暂无抓拍</strong>
             </div>
 

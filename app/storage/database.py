@@ -59,6 +59,8 @@ class Database:
                     duration_ms INTEGER,
                     source TEXT,
                     frame_age_ms INTEGER,
+                    frame_offset INTEGER,
+                    frame_before_trigger_ms INTEGER,
                     error TEXT,
                     UNIQUE(job_id, layer)
                 );
@@ -89,6 +91,13 @@ class Database:
             self._ensure_column(conn, "print_jobs", "job_key", "TEXT")
             self._ensure_column(conn, "snapshots", "source", "TEXT")
             self._ensure_column(conn, "snapshots", "frame_age_ms", "INTEGER")
+            self._ensure_column(conn, "snapshots", "frame_offset", "INTEGER")
+            self._ensure_column(
+                conn,
+                "snapshots",
+                "frame_before_trigger_ms",
+                "INTEGER",
+            )
 
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_print_jobs_job_key "
@@ -254,6 +263,8 @@ class Database:
         error=None,
         source=None,
         frame_age_ms=None,
+        frame_offset=None,
+        frame_before_trigger_ms=None,
     ):
         now = datetime.now(timezone.utc).isoformat()
 
@@ -275,9 +286,11 @@ class Database:
                     duration_ms,
                     source,
                     frame_age_ms,
+                    frame_offset,
+                    frame_before_trigger_ms,
                     error
                 )
-                VALUES (?,?,?,?,?,?,?,?,?)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     job_id,
@@ -288,6 +301,8 @@ class Database:
                     duration_ms,
                     source,
                     frame_age_ms,
+                    frame_offset,
+                    frame_before_trigger_ms,
                     error,
                 ),
             )

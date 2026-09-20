@@ -186,7 +186,11 @@ A frame is captured after a real layer transition such as:
 
 Automatic capture also requires the print to be in an active printing state and not already complete.
 
-By default, frame acquisition uses `CAPTURE_SOURCE=auto`. The RTSP URL is built automatically from `YI_IP`, `YI_USER`, `YI_PASSWORD`, `YI_RTSP_PORT`, and `YI_RTSP_PATH`. A persistent FFmpeg process keeps the RTSP stream open and continuously stores the newest decoded JPEG frame in memory. On a layer change, the service copies that buffered frame immediately instead of reconnecting to RTSP for every layer. If the RTSP buffer is unavailable or stale, `auto` mode falls back to the HTTP snapshot CGI.
+By default, frame acquisition uses `CAPTURE_SOURCE=auto`. The RTSP URL is built automatically from `YI_IP`, `YI_USER`, `YI_PASSWORD`, `YI_RTSP_PORT`, and `YI_RTSP_PATH`. A persistent FFmpeg process keeps the RTSP stream open and stores a rolling history of decoded JPEG frames in memory.
+
+Bambu layer notifications can arrive after the physical layer transition has already happened. To compensate, automatic capture anchors on the newest RTSP frame whose timestamp is at or before the MQTT layer-change trigger, then applies `RTSP_CAPTURE_FRAME_OFFSET`. The default value `-5` selects the fifth earlier buffered frame. At `RTSP_FRAME_RATE=5`, this is roughly one second before the notification and can be tuned experimentally.
+
+Manual snapshots always use frame offset `0`. If the RTSP buffer is unavailable or stale, `auto` mode falls back to the HTTP snapshot CGI.
 
 ## Quick Start with Docker
 
@@ -270,6 +274,8 @@ YI_RTSP_URL=
 RTSP_CAPTURE_TIMEOUT=4
 RTSP_FRAME_RATE=5
 RTSP_FRAME_MAX_AGE=1.0
+RTSP_HISTORY_FRAMES=60
+RTSP_CAPTURE_FRAME_OFFSET=-5
 
 AUTO_CAPTURE=true
 SNAPSHOT_DELAY=0.1
@@ -303,7 +309,9 @@ Main options:
 | `YI_RTSP_URL` | Optional full RTSP URL override for non-standard setups |
 | `RTSP_CAPTURE_TIMEOUT` | RTSP timeout used by compatibility/fallback logic |
 | `RTSP_FRAME_RATE` | Number of JPEG frames per second kept by the persistent RTSP buffer |
-| `RTSP_FRAME_MAX_AGE` | Maximum acceptable age of the buffered frame |
+| `RTSP_FRAME_MAX_AGE` | Maximum acceptable age of the newest buffered frame |
+| `RTSP_HISTORY_FRAMES` | Number of recent RTSP frames retained in memory |
+| `RTSP_CAPTURE_FRAME_OFFSET` | Frame offset relative to the latest frame at or before the layer notification; negative values rewind |
 | `AUTO_CAPTURE` | Enable automatic layer snapshots |
 | `SNAPSHOT_DELAY` | Delay before taking a snapshot |
 | `SNAPSHOT_RETRIES` | Number of snapshot retries |

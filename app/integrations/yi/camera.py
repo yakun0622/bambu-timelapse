@@ -2,6 +2,7 @@ import socket
 import subprocess
 import threading
 import time
+from collections import deque
 from pathlib import Path
 from urllib.parse import quote
 
@@ -21,6 +22,9 @@ class YiCamera:
 
         self._latest_frame = None
         self._latest_frame_at = None
+        self._rtsp_history = deque(
+            maxlen=settings.rtsp_history_frames
+        )
         self._rtsp_connected = False
         self._rtsp_frames = 0
         self._rtsp_reconnects = 0
@@ -214,8 +218,15 @@ class YiCamera:
                 with self._rtsp_lock:
                     self._latest_frame = frame
                     self._latest_frame_at = now
-                    self._rtsp_connected = True
                     self._rtsp_frames += 1
+                    self._rtsp_history.append(
+                        {
+                            "seq": self._rtsp_frames,
+                            "at": now,
+                            "data": frame,
+                        }
+                    )
+                    self._rtsp_connected = True
                     self._rtsp_last_error = None
 
     def rtsp_status(self):
@@ -245,11 +256,19 @@ class YiCamera:
                 ),
                 "frame_age_ms": age_ms,
                 "frames": self._rtsp_frames,
+                "history_frames": len(self._rtsp_history),
+                "history_capacity": settings.rtsp_history_frames,
+                "capture_frame_offset": settings.rtsp_capture_frame_offset,
                 "reconnects": self._rtsp_reconnects,
                 "last_error": self._rtsp_last_error,
             }
 
-    def snapshot(self, target: Path):
+    def snapshot(
+        self,
+        target: Path,
+        trigger_at=None,
+        frame_offset=None,
+    ):
         source = settings.capture_source
 
         if source not in {"auto", "rtsp", "http"}:
@@ -261,7 +280,13 @@ class YiCamera:
                 duration_ms,
                 error,
                 frame_age_ms,
-            ) = self._snapshot_rtsp_buffer(target)
+                frame_offset_applied,
+                frame_before_trigger_ms,
+            ) = self._snapshot_rtsp_buffer(
+                target,
+                trigger_at=trigger_at,
+                frame_offset=frame_offset,
+            )
 
             if ok:
                 return (
@@ -270,6 +295,8 @@ class YiCamera:
                     None,
                     "rtsp",
                     frame_age_ms,
+                    frame_offset_applied,
+                    frame_before_trigger_ms,
                 )
 
             if source == "rtsp":
@@ -279,6 +306,8 @@ class YiCamera:
                     error,
                     "rtsp",
                     frame_age_ms,
+                    frame_offset_applied,
+                    frame_before_trigger_ms,
                 )
 
         ok, duration_ms, error = self._snapshot_http(
@@ -291,46 +320,109 @@ class YiCamera:
             error,
             "http",
             None,
+            None,
+            None,
         )
 
-    def _snapshot_rtsp_buffer(self, target: Path):
+    def _snapshot_rtsp_buffer(
+        self,
+        target: Path,
+        trigger_at=None,
+        frame_offset=None,
+    ):
         started = time.monotonic()
         deadline = started + min(
             0.5,
             settings.rtsp_frame_max_age,
         )
 
+        effective_offset = (
+            settings.rtsp_capture_frame_offset
+            if frame_offset is None
+            else int(frame_offset)
+        )
+
         while True:
             with self._rtsp_lock:
-                frame = self._latest_frame
-                frame_at = self._latest_frame_at
+                history = list(self._rtsp_history)
+                latest_at = self._latest_frame_at
 
-            if frame is not None and frame_at is not None:
+            latest_age_ms = (
+                int(
+                    (time.monotonic() - latest_at)
+                    * 1000
+                )
+                if latest_at is not None
+                else None
+            )
+
+            if (
+                history
+                and latest_age_ms is not None
+                and latest_age_ms
+                <= settings.rtsp_frame_max_age * 1000
+            ):
+                if trigger_at is None:
+                    anchor_index = len(history) - 1
+                else:
+                    anchor_index = None
+
+                    for index in range(
+                        len(history) - 1,
+                        -1,
+                        -1,
+                    ):
+                        if history[index]["at"] <= trigger_at:
+                            anchor_index = index
+                            break
+
+                    if anchor_index is None:
+                        anchor_index = 0
+
+                selected_index = max(
+                    0,
+                    min(
+                        len(history) - 1,
+                        anchor_index + effective_offset,
+                    ),
+                )
+
+                selected = history[selected_index]
+                selected_at = selected["at"]
+                frame = selected["data"]
+                frame_offset_applied = (
+                    selected_index - anchor_index
+                )
+
                 frame_age_ms = int(
-                    (time.monotonic() - frame_at)
+                    (time.monotonic() - selected_at)
                     * 1000
                 )
 
-                if (
-                    frame_age_ms
-                    <= settings.rtsp_frame_max_age
-                    * 1000
-                ):
-                    tmp = target.with_name(
-                        target.stem + ".tmp.jpg"
+                frame_before_trigger_ms = None
+                if trigger_at is not None:
+                    frame_before_trigger_ms = int(
+                        (trigger_at - selected_at)
+                        * 1000
                     )
-                    tmp.write_bytes(frame)
-                    tmp.replace(target)
 
-                    return (
-                        True,
-                        int(
-                            (time.monotonic() - started)
-                            * 1000
-                        ),
-                        None,
-                        frame_age_ms,
-                    )
+                tmp = target.with_name(
+                    target.stem + ".tmp.jpg"
+                )
+                tmp.write_bytes(frame)
+                tmp.replace(target)
+
+                return (
+                    True,
+                    int(
+                        (time.monotonic() - started)
+                        * 1000
+                    ),
+                    None,
+                    frame_age_ms,
+                    frame_offset_applied,
+                    frame_before_trigger_ms,
+                )
 
             if time.monotonic() >= deadline:
                 break
@@ -341,7 +433,7 @@ class YiCamera:
         error = status.get("last_error")
 
         if not error:
-            error = "RTSP frame buffer is not ready"
+            error = "RTSP frame history is not ready"
 
         return (
             False,
@@ -351,6 +443,8 @@ class YiCamera:
             ),
             error,
             status.get("frame_age_ms"),
+            None,
+            None,
         )
 
     def _snapshot_http(self, target: Path):
