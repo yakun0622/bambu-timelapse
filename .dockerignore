@@ -8,4 +8,7 @@ __pycache__
 *.pyo
 *.pyd
 timelapse
+data
+web/node_modules
+web/dist
 .DS_Store
