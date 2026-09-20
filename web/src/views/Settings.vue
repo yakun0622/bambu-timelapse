@@ -114,6 +114,12 @@ onMounted(async () => {
           <dt>RTSP 超时</dt>
           <dd>{{ settings.capture.rtsp_capture_timeout }} 秒</dd>
 
+          <dt>RTSP 缓冲帧率</dt>
+          <dd>{{ settings.capture.rtsp_frame_rate }} FPS</dd>
+
+          <dt>最大帧龄</dt>
+          <dd>{{ settings.capture.rtsp_frame_max_age }} 秒</dd>
+
           <dt>HTTP 失败重试</dt>
           <dd>{{ settings.capture.snapshot_retries }} 次</dd>
 
