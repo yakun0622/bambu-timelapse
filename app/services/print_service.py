@@ -1,6 +1,5 @@
 import re
 from datetime import datetime
-from pathlib import Path
 
 from app.core.config import settings
 from app.core.events import event_bus
@@ -18,8 +17,10 @@ class PrintService:
         self.current_job_dir = None
         self.last_layer = None
         self.last_gcode_state = None
+        self.completing_announced = False
 
     def update(self, print_data: dict):
+        # Cloud MQTT uses delta updates; always merge before evaluating lifecycle.
         self.state.update(print_data)
 
         gcode_state = self.state.get("gcode_state")
@@ -29,23 +30,44 @@ class PrintService:
 
         event_bus.emit(
             "PRINT_PROGRESS",
-            f"{gcode_state or '?'} layer {layer or '?'}/{total or '?'}",
+            f"{gcode_state or '?'} layer {layer if layer is not None else '?'}/{total if total is not None else '?'}",
             self.status(),
         )
 
-        if gcode_state == "RUNNING" and self.current_job_id is None and isinstance(layer, int):
+        # A job starts only when the printer is really running and has valid layer data.
+        if (
+            gcode_state == "RUNNING"
+            and self.current_job_id is None
+            and isinstance(layer, int)
+            and (progress is None or progress < 100)
+        ):
             self._start_job(layer, total, progress)
 
         if self.current_job_id is not None:
+            status = "PAUSED" if gcode_state == "PAUSE" else "PRINTING"
             db.update_job(
                 self.current_job_id,
                 current_layer=layer,
                 total_layers=total,
                 progress=progress,
-                status="PAUSED" if gcode_state == "PAUSE" else "PRINTING",
+                status=status,
             )
 
-        self._handle_layer(layer, total, gcode_state)
+        # 100% is treated as a completion hint. FINISH remains authoritative.
+        if (
+            self.current_job_id is not None
+            and isinstance(progress, (int, float))
+            and progress >= 100
+            and not self.completing_announced
+        ):
+            self.completing_announced = True
+            event_bus.emit(
+                "PRINT_COMPLETING",
+                "Print reached 100%; waiting for FINISH state",
+                {"job_id": self.current_job_id, "progress": progress},
+            )
+
+        self._handle_layer(layer, total, gcode_state, progress)
 
         if (
             self.current_job_id is not None
@@ -65,14 +87,15 @@ class PrintService:
         self.current_job_id = db.create_job(name, layer, total, progress, job_dir)
         self.current_job_dir = job_dir
         self.last_layer = layer
+        self.completing_announced = False
 
         event_bus.emit(
             "PRINT_STARTED",
             f"Print started: {name}",
-            {"job_id": self.current_job_id, "layer": layer, "total": total},
+            {"job_id": self.current_job_id, "layer": layer, "total": total, "progress": progress},
         )
 
-    def _handle_layer(self, layer, total, gcode_state):
+    def _handle_layer(self, layer, total, gcode_state, progress):
         if not isinstance(layer, int):
             return
 
@@ -89,19 +112,28 @@ class PrintService:
 
         previous = self.last_layer
         self.last_layer = layer
+
         event_bus.emit(
             "LAYER_CHANGED",
             f"Layer changed {previous} -> {layer}",
             {"job_id": self.current_job_id, "layer": layer, "total": total},
         )
 
-        if (
+        should_capture = (
             settings.auto_capture
             and self.current_job_id is not None
-            and gcode_state in {None, "RUNNING"}
+            and gcode_state == "RUNNING"
+            and (progress is None or progress < 100)
             and layer % settings.capture_every_layers == 0
-        ):
-            capture_service.enqueue(self.current_job_id, self.current_job_dir, layer, total)
+        )
+
+        if should_capture:
+            capture_service.enqueue(
+                self.current_job_id,
+                self.current_job_dir,
+                layer,
+                total,
+            )
 
     def _finish_job(self, printer_state):
         job_id = self.current_job_id
@@ -115,7 +147,11 @@ class PrintService:
         }.get(printer_state, printer_state)
 
         db.finish_job(job_id, status)
-        event_bus.emit("PRINT_FINISHED", f"Print ended: {status}", {"job_id": job_id, "status": status})
+        event_bus.emit(
+            "PRINT_FINISHED",
+            f"Print ended: {status}",
+            {"job_id": job_id, "status": status},
+        )
 
         if status == "FINISHED":
             timelapse_service.generate_async(job_id, job_dir)
@@ -123,6 +159,7 @@ class PrintService:
         self.current_job_id = None
         self.current_job_dir = None
         self.last_layer = None
+        self.completing_announced = False
 
     def _job_name(self):
         for key in ("subtask_name", "gcode_file", "project_name", "task_name"):
