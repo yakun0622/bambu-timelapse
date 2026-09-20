@@ -191,3 +191,70 @@ file test.jpg
 不建议把摄像头 HTTP / RTSP 端口直接暴露到公网。
 
 第三方固件存在刷机风险，请确认设备型号与固件匹配后再操作。
+
+
+---
+
+## 6. RTSP 实时抽帧模式
+
+为了让延时摄影更接近“换层瞬间”，项目支持直接从 Yi 的 RTSP 视频流抽取当前帧。
+
+默认配置：
+
+```env
+CAPTURE_SOURCE=auto
+YI_RTSP_URL=
+RTSP_CAPTURE_TIMEOUT=4
+```
+
+`auto` 模式会：
+
+```text
+换层事件
+   ↓
+尝试 RTSP 抽一帧
+   ↓
+成功 → 直接保存 JPEG
+   ↓ 失败
+回退到 HTTP snapshot.sh
+```
+
+如果没有配置 `YI_RTSP_URL`，项目默认尝试：
+
+```text
+rtsp://<YI_IP>/ch0_0.h264
+```
+
+如果你的 Yi Hack 使用其他 RTSP 地址，可以在 `.env` 里直接写完整地址，例如：
+
+```env
+YI_RTSP_URL=rtsp://192.168.2.194/ch0_0.h264
+```
+
+可先在宿主机测试：
+
+```bash
+ffmpeg -rtsp_transport tcp \
+  -i "rtsp://192.168.2.194/ch0_0.h264" \
+  -frames:v 1 -q:v 2 test.jpg
+```
+
+如果 RTSP 稳定，建议将换层后的额外等待缩短，例如：
+
+```env
+SNAPSHOT_DELAY=0.1
+```
+
+甚至测试：
+
+```env
+SNAPSHOT_DELAY=0
+```
+
+具体数值取决于你希望抓到“刚进入新层”还是“新层开始打印后稍晚一些”的画面。
+
+如果 RTSP 不稳定，可以强制回到旧方案：
+
+```env
+CAPTURE_SOURCE=http
+```
