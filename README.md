@@ -186,7 +186,7 @@ A frame is captured after a real layer transition such as:
 
 Automatic capture also requires the print to be in an active printing state and not already complete.
 
-By default, frame acquisition uses `CAPTURE_SOURCE=auto`. The RTSP URL is built automatically from `YI_IP`, `YI_USER`, `YI_PASSWORD`, `YI_RTSP_PORT`, and `YI_RTSP_PATH`. The service first asks FFmpeg for a single frame from the Yi RTSP stream and, if that fails, falls back to the HTTP snapshot CGI. RTSP capture is usually much closer to the actual layer-change moment because it avoids waiting for the camera to generate a separate high-resolution still image.
+By default, frame acquisition uses `CAPTURE_SOURCE=auto`. The RTSP URL is built automatically from `YI_IP`, `YI_USER`, `YI_PASSWORD`, `YI_RTSP_PORT`, and `YI_RTSP_PATH`. A persistent FFmpeg process keeps the RTSP stream open and continuously stores the newest decoded JPEG frame in memory. On a layer change, the service copies that buffered frame immediately instead of reconnecting to RTSP for every layer. If the RTSP buffer is unavailable or stale, `auto` mode falls back to the HTTP snapshot CGI.
 
 ## Quick Start with Docker
 
@@ -268,9 +268,11 @@ YI_RTSP_PORT=554
 YI_RTSP_PATH=/ch0_0.h264
 YI_RTSP_URL=
 RTSP_CAPTURE_TIMEOUT=4
+RTSP_FRAME_RATE=5
+RTSP_FRAME_MAX_AGE=1.0
 
 AUTO_CAPTURE=true
-SNAPSHOT_DELAY=0.5
+SNAPSHOT_DELAY=0.1
 SNAPSHOT_RETRIES=3
 CAPTURE_EVERY_LAYERS=1
 
@@ -299,7 +301,9 @@ Main options:
 | `YI_RTSP_PORT` | RTSP server port, default `554` |
 | `YI_RTSP_PATH` | RTSP stream path, default `/ch0_0.h264` |
 | `YI_RTSP_URL` | Optional full RTSP URL override for non-standard setups |
-| `RTSP_CAPTURE_TIMEOUT` | Maximum time to wait for a single RTSP frame |
+| `RTSP_CAPTURE_TIMEOUT` | RTSP timeout used by compatibility/fallback logic |
+| `RTSP_FRAME_RATE` | Number of JPEG frames per second kept by the persistent RTSP buffer |
+| `RTSP_FRAME_MAX_AGE` | Maximum acceptable age of the buffered frame |
 | `AUTO_CAPTURE` | Enable automatic layer snapshots |
 | `SNAPSHOT_DELAY` | Delay before taking a snapshot |
 | `SNAPSHOT_RETRIES` | Number of snapshot retries |
