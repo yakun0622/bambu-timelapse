@@ -25,6 +25,13 @@ class Settings:
     rtsp_capture_timeout: float = float(
         os.getenv("RTSP_CAPTURE_TIMEOUT", "4")
     )
+    rtsp_frame_rate: int = max(
+        1,
+        int(os.getenv("RTSP_FRAME_RATE", "5")),
+    )
+    rtsp_frame_max_age: float = float(
+        os.getenv("RTSP_FRAME_MAX_AGE", "1.0")
+    )
 
     snapshot_delay: float = float(os.getenv("SNAPSHOT_DELAY", "0.5"))
     snapshot_retries: int = int(os.getenv("SNAPSHOT_RETRIES", "3"))
