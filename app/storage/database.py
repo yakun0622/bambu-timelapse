@@ -60,6 +60,24 @@ class Database:
                     error TEXT,
                     UNIQUE(job_id, layer)
                 );
+
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT NOT NULL UNIQUE,
+                    password_hash TEXT NOT NULL,
+                    must_change_password INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS auth_sessions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    token_hash TEXT NOT NULL UNIQUE,
+                    created_at TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+                );
                 """
             )
 
@@ -75,6 +93,10 @@ class Database:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_print_jobs_status "
                 "ON print_jobs(status)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_auth_sessions_token "
+                "ON auth_sessions(token_hash)"
             )
 
     def create_job(
@@ -298,6 +320,109 @@ class Database:
             ).fetchall()
             job["snapshots"] = [dict(row) for row in shots]
             return job
+
+    def user_count(self):
+        with self.connect() as conn:
+            row = conn.execute("SELECT COUNT(*) AS count FROM users").fetchone()
+            return int(row["count"])
+
+    def create_user(self, username, password_hash, must_change_password=True):
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock, self.connect() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO users
+                (username,password_hash,must_change_password,created_at,updated_at)
+                VALUES (?,?,?,?,?)
+                """,
+                (
+                    username,
+                    password_hash,
+                    1 if must_change_password else 0,
+                    now,
+                    now,
+                ),
+            )
+            return cur.lastrowid
+
+    def get_user_by_username(self, username):
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM users WHERE username=?",
+                (username,),
+            ).fetchone()
+            return dict(row) if row else None
+
+    def get_user(self, user_id):
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM users WHERE id=?",
+                (user_id,),
+            ).fetchone()
+            return dict(row) if row else None
+
+    def update_user_password(self, user_id, password_hash, must_change_password=False):
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock, self.connect() as conn:
+            conn.execute(
+                """
+                UPDATE users
+                SET password_hash=?, must_change_password=?, updated_at=?
+                WHERE id=?
+                """,
+                (
+                    password_hash,
+                    1 if must_change_password else 0,
+                    now,
+                    user_id,
+                ),
+            )
+
+    def create_session(self, user_id, token_hash, created_at, expires_at):
+        with self._lock, self.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO auth_sessions
+                (user_id,token_hash,created_at,expires_at)
+                VALUES (?,?,?,?)
+                """,
+                (user_id, token_hash, created_at, expires_at),
+            )
+
+    def get_session_user(self, token_hash, now_iso):
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT u.*
+                FROM auth_sessions s
+                JOIN users u ON u.id=s.user_id
+                WHERE s.token_hash=? AND s.expires_at>?
+                LIMIT 1
+                """,
+                (token_hash, now_iso),
+            ).fetchone()
+            return dict(row) if row else None
+
+    def delete_session(self, token_hash):
+        with self._lock, self.connect() as conn:
+            conn.execute(
+                "DELETE FROM auth_sessions WHERE token_hash=?",
+                (token_hash,),
+            )
+
+    def delete_user_sessions(self, user_id):
+        with self._lock, self.connect() as conn:
+            conn.execute(
+                "DELETE FROM auth_sessions WHERE user_id=?",
+                (user_id,),
+            )
+
+    def cleanup_expired_sessions(self, now_iso):
+        with self._lock, self.connect() as conn:
+            conn.execute(
+                "DELETE FROM auth_sessions WHERE expires_at<=?",
+                (now_iso,),
+            )
 
 
 db = Database()
