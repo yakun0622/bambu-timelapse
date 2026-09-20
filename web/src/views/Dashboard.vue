@@ -238,10 +238,10 @@ function eventMessage(event) {
         && d.frame_age_ms !== undefined
         ? ` · 帧龄 ${d.frame_age_ms} ms`
         : "";
-      const rewind = d.frame_offset !== null
-        && d.frame_offset !== undefined
-        && d.frame_offset < 0
-        ? ` · 回溯 ${Math.abs(d.frame_offset)} 帧`
+      const rewind = d.rewind_ms !== null
+        && d.rewind_ms !== undefined
+        && d.rewind_ms > 0
+        ? ` · 回溯 ${d.rewind_ms} ms`
         : "";
       const beforeTrigger = d.frame_before_trigger_ms !== null
         && d.frame_before_trigger_ms !== undefined
@@ -567,13 +567,13 @@ onBeforeUnmount(() => {
               </strong>
               <small
                 v-if="
-                  data.latest_snapshot?.frame_offset !== null
-                  && data.latest_snapshot?.frame_offset !== undefined
-                  && data.latest_snapshot.frame_offset < 0
+                  data.latest_snapshot?.rewind_ms !== null
+                  && data.latest_snapshot?.rewind_ms !== undefined
+                  && data.latest_snapshot.rewind_ms > 0
                 "
                 class="snapshot-rewind"
               >
-                回溯 {{ Math.abs(data.latest_snapshot.frame_offset) }} 帧
+                回溯 {{ data.latest_snapshot.rewind_ms }} ms
                 <template
                   v-if="
                     data.latest_snapshot.frame_before_trigger_ms !== null
