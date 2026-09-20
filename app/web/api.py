@@ -224,8 +224,11 @@ def manual_snapshot():
         error,
         source,
         frame_age_ms,
+        frame_offset,
+        frame_before_trigger_ms,
     ) = camera.snapshot(
-        manual_path
+        manual_path,
+        frame_offset=0,
     )
 
     if not ok:
@@ -245,6 +248,8 @@ def manual_snapshot():
             "source": source,
             "duration_ms": duration_ms,
             "frame_age_ms": frame_age_ms,
+            "frame_offset": frame_offset,
+            "frame_before_trigger_ms": frame_before_trigger_ms,
         },
     )
 
@@ -254,6 +259,8 @@ def manual_snapshot():
         "duration_ms": duration_ms,
         "source": source,
         "frame_age_ms": frame_age_ms,
+        "frame_offset": frame_offset,
+        "frame_before_trigger_ms": frame_before_trigger_ms,
     }
 
 
@@ -350,6 +357,8 @@ def get_settings():
             "rtsp_capture_timeout": settings.rtsp_capture_timeout,
             "rtsp_frame_rate": settings.rtsp_frame_rate,
             "rtsp_frame_max_age": settings.rtsp_frame_max_age,
+            "rtsp_history_frames": settings.rtsp_history_frames,
+            "rtsp_capture_frame_offset": settings.rtsp_capture_frame_offset,
         },
         "video": {
             "auto_generate_video": settings.auto_generate_video,
