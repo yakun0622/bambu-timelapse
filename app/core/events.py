@@ -9,6 +9,7 @@ class EventBus:
         self._subscribers = set()
         self._lock = threading.Lock()
         self._recent = []
+        self._sequence = 0
 
     def bind_loop(self, loop):
         self._loop = loop
@@ -26,13 +27,15 @@ class EventBus:
         self._subscribers.discard(queue)
 
     def emit(self, event_type, message, data=None):
-        event = {
-            "type": event_type,
-            "message": message,
-            "data": data or {},
-            "time": datetime.now(timezone.utc).isoformat(),
-        }
         with self._lock:
+            self._sequence += 1
+            event = {
+                "id": self._sequence,
+                "type": event_type,
+                "message": message,
+                "data": data or {},
+                "time": datetime.now(timezone.utc).isoformat(),
+            }
             self._recent.append(event)
             self._recent = self._recent[-200:]
 
