@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse
 from app.core.config import settings
 from app.core.events import event_bus
 from app.integrations.bambu.mqtt import BambuMQTT
+from app.integrations.yi.camera import camera
 from app.services.capture_service import capture_service
 from app.services.print_service import print_service
 from app.web.api import auth_router, router as api_router
@@ -19,11 +20,13 @@ mqtt_service = BambuMQTT(print_service.update)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     event_bus.bind_loop(asyncio.get_running_loop())
+    camera.start()
     capture_service.start()
     mqtt_service.start()
     yield
     mqtt_service.stop()
     capture_service.stop()
+    camera.stop()
 
 
 app = FastAPI(title="Bambu Timelapse", version="0.2.0", lifespan=lifespan)
