@@ -1,22 +1,155 @@
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
 from app.core.config import settings
 from app.core.events import event_bus
 from app.integrations.yi.camera import camera
-from app.services.capture_service import capture_service
+from app.services.auth_service import auth_service
 from app.services.print_service import print_service
 from app.storage.database import db
 
-router = APIRouter(prefix="/api")
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+def _session_cookie(request: Request):
+    return request.cookies.get(auth_service.COOKIE_NAME)
+
+
+def require_user(request: Request):
+    user = auth_service.authenticate(_session_cookie(request))
+
+    if not user:
+        raise HTTPException(
+            status_code=401,
+            detail="请先登录",
+        )
+
+    return user
+
+
+def require_ready_user(request: Request):
+    user = require_user(request)
+
+    if user["must_change_password"]:
+        raise HTTPException(
+            status_code=403,
+            detail="首次登录必须修改默认密码",
+            headers={"X-Password-Change-Required": "1"},
+        )
+
+    return user
+
+
+auth_router = APIRouter(prefix="/api/auth")
+
+
+@auth_router.post("/login")
+def login(payload: LoginRequest, request: Request, response: Response):
+    token, user = auth_service.login(
+        payload.username.strip(),
+        payload.password,
+    )
+
+    if not user:
+        raise HTTPException(
+            status_code=401,
+            detail="账号或密码错误",
+        )
+
+    response.set_cookie(
+        key=auth_service.COOKIE_NAME,
+        value=token,
+        max_age=auth_service.SESSION_DAYS * 24 * 60 * 60,
+        httponly=True,
+        samesite="lax",
+        secure=request.url.scheme == "https",
+        path="/",
+    )
+
+    return {"user": user}
+
+
+@auth_router.get("/me")
+def me(user=Depends(require_user)):
+    return {"user": user}
+
+
+@auth_router.post("/change-password")
+def change_password(
+    payload: ChangePasswordRequest,
+    request: Request,
+    response: Response,
+    user=Depends(require_user),
+):
+    ok, error = auth_service.change_password(
+        user["id"],
+        payload.current_password,
+        payload.new_password,
+    )
+
+    if not ok:
+        raise HTTPException(
+            status_code=400,
+            detail=error,
+        )
+
+    token, updated_user = auth_service.login(
+        user["username"],
+        payload.new_password,
+    )
+
+    response.set_cookie(
+        key=auth_service.COOKIE_NAME,
+        value=token,
+        max_age=auth_service.SESSION_DAYS * 24 * 60 * 60,
+        httponly=True,
+        samesite="lax",
+        secure=request.url.scheme == "https",
+        path="/",
+    )
+
+    return {
+        "ok": True,
+        "user": updated_user,
+    }
+
+
+@auth_router.post("/logout")
+def logout(request: Request, response: Response):
+    auth_service.logout(_session_cookie(request))
+    response.delete_cookie(
+        auth_service.COOKIE_NAME,
+        path="/",
+    )
+    return {"ok": True}
+
+
+router = APIRouter(
+    prefix="/api",
+    dependencies=[Depends(require_ready_user)],
+)
 
 
 @router.get("/status")
 def status():
     current = print_service.status()
-    job = db.get_job(current["job_id"]) if current.get("job_id") else None
+    job = (
+        db.get_job(current["job_id"])
+        if current.get("job_id")
+        else None
+    )
+
     return {
         "printer": current,
         "camera": {
@@ -53,19 +186,42 @@ def manual_snapshot():
     layer = print_service.state.get("layer_num")
 
     if not job_id or not job_dir or not isinstance(layer, int):
-        raise HTTPException(status_code=409, detail="No active print job")
+        raise HTTPException(
+            status_code=409,
+            detail="当前没有活动打印任务",
+        )
 
-    manual_path = Path(job_dir) / f"manual_{layer:04d}.jpg"
-    ok, duration_ms, error = camera.snapshot(manual_path)
+    manual_path = (
+        Path(job_dir)
+        / f"manual_{layer:04d}.jpg"
+    )
+
+    ok, duration_ms, error = camera.snapshot(
+        manual_path
+    )
+
     if not ok:
-        raise HTTPException(status_code=502, detail=error or "Snapshot failed")
+        raise HTTPException(
+            status_code=502,
+            detail=error or "抓拍失败",
+        )
 
     event_bus.emit(
         "SNAPSHOT_SUCCESS",
-        f"Manual snapshot saved for layer {layer}",
-        {"job_id": job_id, "layer": layer, "path": str(manual_path), "manual": True},
+        f"已手动抓拍第 {layer} 层",
+        {
+            "job_id": job_id,
+            "layer": layer,
+            "path": str(manual_path),
+            "manual": True,
+        },
     )
-    return {"ok": True, "path": str(manual_path), "duration_ms": duration_ms}
+
+    return {
+        "ok": True,
+        "path": str(manual_path),
+        "duration_ms": duration_ms,
+    }
 
 
 @router.get("/jobs")
@@ -76,34 +232,61 @@ def jobs():
 @router.get("/jobs/{job_id}")
 def job(job_id: int):
     value = db.get_job(job_id)
+
     if not value:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(
+            status_code=404,
+            detail="任务不存在",
+        )
+
     return value
 
 
 @router.get("/jobs/{job_id}/frames/{filename}")
 def frame(job_id: int, filename: str):
     job_data = db.get_job(job_id)
+
     if not job_data:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(
+            status_code=404,
+            detail="任务不存在",
+        )
 
     safe_name = Path(filename).name
     path = Path(job_data["output_dir"]) / safe_name
+
     if not path.is_file():
-        raise HTTPException(status_code=404, detail="Frame not found")
+        raise HTTPException(
+            status_code=404,
+            detail="图片不存在",
+        )
+
     return FileResponse(path)
 
 
 @router.get("/jobs/{job_id}/video")
 def video(job_id: int):
     job_data = db.get_job(job_id)
+
     if not job_data or not job_data.get("video_path"):
-        raise HTTPException(status_code=404, detail="Video not found")
+        raise HTTPException(
+            status_code=404,
+            detail="视频不存在",
+        )
 
     path = Path(job_data["video_path"])
+
     if not path.is_file():
-        raise HTTPException(status_code=404, detail="Video file not found")
-    return FileResponse(path, media_type="video/mp4", filename=path.name)
+        raise HTTPException(
+            status_code=404,
+            detail="视频文件不存在",
+        )
+
+    return FileResponse(
+        path,
+        media_type="video/mp4",
+        filename=path.name,
+    )
 
 
 @router.get("/settings")
