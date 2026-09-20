@@ -2,6 +2,7 @@ import socket
 import subprocess
 import time
 from pathlib import Path
+from urllib.parse import quote
 
 import requests
 
@@ -24,7 +25,34 @@ class YiCamera:
         if settings.yi_rtsp_url:
             return settings.yi_rtsp_url
 
-        return f"rtsp://{settings.yi_ip}/ch0_0.h264"
+        path = settings.yi_rtsp_path.strip() or "/ch0_0.h264"
+        if not path.startswith("/"):
+            path = "/" + path
+
+        auth = ""
+        if settings.yi_user:
+            user = quote(settings.yi_user, safe="")
+            password = quote(settings.yi_password, safe="")
+            auth = f"{user}:{password}@"
+
+        return (
+            f"rtsp://{auth}{settings.yi_ip}:"
+            f"{settings.yi_rtsp_port}{path}"
+        )
+
+    @property
+    def rtsp_display_url(self):
+        path = settings.yi_rtsp_path.strip() or "/ch0_0.h264"
+        if not path.startswith("/"):
+            path = "/" + path
+
+        if settings.yi_rtsp_url:
+            return "Custom RTSP URL"
+
+        return (
+            f"rtsp://{settings.yi_ip}:"
+            f"{settings.yi_rtsp_port}{path}"
+        )
 
     def snapshot(self, target: Path):
         source = settings.capture_source
