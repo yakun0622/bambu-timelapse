@@ -92,7 +92,7 @@ class CaptureService:
                 error,
                 source,
                 frame_age_ms,
-                frame_offset,
+                rewind_ms,
                 frame_before_trigger_ms,
             ) = camera.snapshot(
                 target,
@@ -113,7 +113,7 @@ class CaptureService:
                     duration_ms=duration_ms,
                     source=source,
                     frame_age_ms=frame_age_ms,
-                    frame_offset=frame_offset,
+                    rewind_ms=rewind_ms,
                     frame_before_trigger_ms=frame_before_trigger_ms,
                 )
 
@@ -127,7 +127,7 @@ class CaptureService:
                         "duration_ms": duration_ms,
                         "acquisition_ms": acquisition_ms,
                         "frame_age_ms": frame_age_ms,
-                        "frame_offset": frame_offset,
+                        "rewind_ms": rewind_ms,
                         "frame_before_trigger_ms": frame_before_trigger_ms,
                         "source": source,
                     },
@@ -143,7 +143,7 @@ class CaptureService:
                     error=error,
                     source=source,
                     frame_age_ms=frame_age_ms,
-                    frame_offset=frame_offset,
+                    rewind_ms=rewind_ms,
                     frame_before_trigger_ms=frame_before_trigger_ms,
                 )
 
@@ -156,7 +156,7 @@ class CaptureService:
                         "duration_ms": duration_ms,
                         "acquisition_ms": acquisition_ms,
                         "frame_age_ms": frame_age_ms,
-                        "frame_offset": frame_offset,
+                        "rewind_ms": rewind_ms,
                         "frame_before_trigger_ms": frame_before_trigger_ms,
                         "error": error,
                         "source": source,
