@@ -120,6 +120,20 @@ onMounted(async () => {
           <dt>最大帧龄</dt>
           <dd>{{ settings.capture.rtsp_frame_max_age }} 秒</dd>
 
+          <dt>历史帧缓存</dt>
+          <dd>{{ settings.capture.rtsp_history_frames }} 帧</dd>
+
+          <dt>自动抓拍回溯</dt>
+          <dd>
+            {{
+              settings.capture.rtsp_capture_frame_offset < 0
+                ? "前 " + Math.abs(settings.capture.rtsp_capture_frame_offset) + " 帧"
+                : settings.capture.rtsp_capture_frame_offset === 0
+                  ? "触发时刻"
+                  : "后 " + settings.capture.rtsp_capture_frame_offset + " 帧"
+            }}
+          </dd>
+
           <dt>HTTP 失败重试</dt>
           <dd>{{ settings.capture.snapshot_retries }} 次</dd>
 
