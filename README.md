@@ -43,6 +43,7 @@ bambu-timelapse
 
 - [小蚁摄像头刷机与配置](docs/YI_CAMERA_SETUP.md)
 - [Bambu Cloud Token 与关键参数获取](docs/BAMBU_CLOUD_SETUP.md)
+- [Docker 部署](docs/DOCKER.md)
 
 ## 快速开始
 
@@ -79,6 +80,25 @@ cn.mqtt.bambulab.com:8883
 [docs/BAMBU_CLOUD_SETUP.md](docs/BAMBU_CLOUD_SETUP.md)
 
 ### 3. 安装
+
+#### Docker（推荐）
+
+```bash
+git clone https://github.com/yakun0622/bambu-timelapse.git
+cd bambu-timelapse
+
+cp .env.example .env
+nano .env
+
+docker compose up -d --build
+docker compose logs -f
+```
+
+详细说明：
+
+[docs/DOCKER.md](docs/DOCKER.md)
+
+#### Python
 
 Debian / Ubuntu：
 
@@ -157,8 +177,12 @@ timelapse/
 bambu-timelapse/
 ├── docs/
 │   ├── BAMBU_CLOUD_SETUP.md
+│   ├── DOCKER.md
 │   └── YI_CAMERA_SETUP.md
+├── .dockerignore
 ├── .env.example
+├── Dockerfile
+├── docker-compose.yml
 ├── camera.py
 ├── config.py
 ├── main.py
