@@ -173,6 +173,8 @@ def status():
         "camera": {
             "ip": settings.yi_ip,
             "configured": bool(settings.yi_ip),
+            "capture_source": settings.capture_source,
+            "rtsp": camera.rtsp_status(),
         },
         "job": job,
         "latest_snapshot": latest_snapshot,
@@ -216,7 +218,13 @@ def manual_snapshot():
         / f"manual_{layer:04d}.jpg"
     )
 
-    ok, duration_ms, error, source = camera.snapshot(
+    (
+        ok,
+        duration_ms,
+        error,
+        source,
+        frame_age_ms,
+    ) = camera.snapshot(
         manual_path
     )
 
@@ -236,6 +244,7 @@ def manual_snapshot():
             "manual": True,
             "source": source,
             "duration_ms": duration_ms,
+            "frame_age_ms": frame_age_ms,
         },
     )
 
@@ -244,6 +253,7 @@ def manual_snapshot():
         "path": str(manual_path),
         "duration_ms": duration_ms,
         "source": source,
+        "frame_age_ms": frame_age_ms,
     }
 
 
@@ -338,6 +348,8 @@ def get_settings():
             "snapshot_retries": settings.snapshot_retries,
             "capture_every_layers": settings.capture_every_layers,
             "rtsp_capture_timeout": settings.rtsp_capture_timeout,
+            "rtsp_frame_rate": settings.rtsp_frame_rate,
+            "rtsp_frame_max_age": settings.rtsp_frame_max_age,
         },
         "video": {
             "auto_generate_video": settings.auto_generate_video,
