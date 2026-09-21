@@ -50,7 +50,7 @@ onMounted(loadSettings);
       <div>
         <p class="eyebrow">系统配置</p>
         <h1>设置</h1>
-        <p>当前配置来自 .env，敏感凭据不会返回到浏览器。</p>
+        <p>基础配置来自 .env；抓拍回溯策略可在页面保存并立即生效。</p>
       </div>
     </div>
 
