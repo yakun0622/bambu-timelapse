@@ -67,6 +67,8 @@ class Database:
                     vision_stable INTEGER,
                     bed_score REAL,
                     bed_stable INTEGER,
+                    bed_locator_mode TEXT,
+                    aruco_id INTEGER,
                     align_dx INTEGER,
                     align_dy INTEGER,
                     error TEXT,
@@ -122,6 +124,8 @@ class Database:
             self._ensure_column(conn, "snapshots", "vision_stable", "INTEGER")
             self._ensure_column(conn, "snapshots", "bed_score", "REAL")
             self._ensure_column(conn, "snapshots", "bed_stable", "INTEGER")
+            self._ensure_column(conn, "snapshots", "bed_locator_mode", "TEXT")
+            self._ensure_column(conn, "snapshots", "aruco_id", "INTEGER")
             self._ensure_column(conn, "snapshots", "align_dx", "INTEGER")
             self._ensure_column(conn, "snapshots", "align_dy", "INTEGER")
             self._ensure_column(
@@ -404,6 +408,8 @@ class Database:
         vision_stable=None,
         bed_score=None,
         bed_stable=None,
+        bed_locator_mode=None,
+        aruco_id=None,
         align_dx=None,
         align_dy=None,
     ):
@@ -435,11 +441,13 @@ class Database:
                     vision_stable,
                     bed_score,
                     bed_stable,
+                    bed_locator_mode,
+                    aruco_id,
                     align_dx,
                     align_dy,
                     error
                 )
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     job_id,
@@ -466,6 +474,8 @@ class Database:
                         if bed_stable is None
                         else int(bool(bed_stable))
                     ),
+                    bed_locator_mode,
+                    aruco_id,
                     align_dx,
                     align_dy,
                     error,
