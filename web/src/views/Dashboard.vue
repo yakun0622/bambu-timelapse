@@ -238,17 +238,21 @@ function eventMessage(event) {
         && d.frame_age_ms !== undefined
         ? ` · 帧龄 ${d.frame_age_ms} ms`
         : "";
-      const rewind = d.rewind_mode === "frame"
-        && d.frame_offset !== null
-        && d.frame_offset !== undefined
-        && d.frame_offset < 0
-        ? ` · 回溯 ${Math.abs(d.frame_offset)} 帧`
-        : d.rewind_mode === "time"
-          && d.rewind_ms !== null
-          && d.rewind_ms !== undefined
-          && d.rewind_ms > 0
-          ? ` · 回溯 ${d.rewind_ms} ms`
-          : "";
+      const rewind = d.selection_mode === "vision"
+        ? ` · 视觉 ${d.vision_score ?? "—"}${d.vision_stable ? " · 稳定" : " · 未稳定"}`
+        : d.selection_mode === "vision-fallback"
+          ? ` · 视觉未命中 → 回退 ${d.rewind_ms ?? "—"} ms`
+          : d.rewind_mode === "frame"
+            && d.frame_offset !== null
+            && d.frame_offset !== undefined
+            && d.frame_offset < 0
+            ? ` · 回溯 ${Math.abs(d.frame_offset)} 帧`
+            : d.rewind_mode === "time"
+              && d.rewind_ms !== null
+              && d.rewind_ms !== undefined
+              && d.rewind_ms > 0
+              ? ` · 回溯 ${d.rewind_ms} ms`
+              : "";
       const beforeTrigger = d.frame_before_trigger_ms !== null
         && d.frame_before_trigger_ms !== undefined
         ? ` · 触发前 ${d.frame_before_trigger_ms} ms`
