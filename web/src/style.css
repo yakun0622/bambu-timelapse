@@ -2399,3 +2399,58 @@ dd { margin: 0; color: #d9dde2; overflow-wrap: anywhere; }
 :root[data-theme="light"] .vision-toggle-line input {
   accent-color: #303840;
 }
+
+
+.vision-select {
+  width: 100%;
+  height: 40px;
+  padding: 0 10px;
+  border: 1px solid #2a323b;
+  border-radius: 9px;
+  outline: none;
+  background: #0a0e12;
+  color: #edf1f4;
+  font-size: 12px;
+}
+
+.vision-select:focus {
+  border-color: #65717e;
+  box-shadow: 0 0 0 3px rgba(133, 147, 162, .10);
+}
+
+.aruco-hint {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid #244636;
+  border-radius: 12px;
+  background: rgba(76, 175, 120, .06);
+}
+
+.aruco-hint strong {
+  display: block;
+  color: #77dda0;
+  font-size: 11px;
+}
+
+.aruco-hint span {
+  display: block;
+  margin-top: 5px;
+  color: #7d8993;
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+:root[data-theme="light"] .vision-select {
+  border-color: #d5dce2;
+  background: #ffffff;
+  color: #20262d;
+}
+
+:root[data-theme="light"] .aruco-hint {
+  border-color: #cfe7d8;
+  background: #f3faf6;
+}
+
+:root[data-theme="light"] .aruco-hint strong {
+  color: #2f9d59;
+}
