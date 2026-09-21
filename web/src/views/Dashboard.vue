@@ -239,7 +239,7 @@ function eventMessage(event) {
         ? ` · 帧龄 ${d.frame_age_ms} ms`
         : "";
       const rewind = d.selection_mode === "vision"
-        ? ` · 视觉 ${d.vision_score ?? "—"}${d.vision_stable ? " · 稳定" : " · 未稳定"}`
+        ? ` · 喷头 ${d.vision_score ?? "—"} · 热床 ${d.bed_score ?? "—"} · 稳定${d.align_dx || d.align_dy ? ` · 对齐(${d.align_dx ?? 0}, ${d.align_dy ?? 0})px` : ""}`
         : d.selection_mode === "vision-fallback"
           ? ` · 视觉未命中 → 回退 ${d.rewind_ms ?? "—"} ms`
           : d.rewind_mode === "frame"
@@ -582,13 +582,26 @@ onBeforeUnmount(() => {
                   v-if="data.latest_snapshot.selection_mode === 'vision'"
                   class="snapshot-rewind"
                 >
-                  视觉定位 · 匹配
+                  视觉定位 · 喷头
                   {{ data.latest_snapshot.vision_score ?? "—" }}
+                  · 热床
+                  {{ data.latest_snapshot.bed_score ?? "—" }}
                   · {{
                     data.latest_snapshot.vision_stable
-                      ? "稳定"
+                      && data.latest_snapshot.bed_stable
+                      ? "双目标稳定"
                       : "未稳定"
                   }}
+                  <template
+                    v-if="
+                      data.latest_snapshot.align_dx !== null
+                      && data.latest_snapshot.align_dx !== undefined
+                    "
+                  >
+                    · 对齐
+                    ({{ data.latest_snapshot.align_dx }},
+                    {{ data.latest_snapshot.align_dy }}) px
+                  </template>
                   <template
                     v-if="
                       data.latest_snapshot.frame_before_trigger_ms !== null
