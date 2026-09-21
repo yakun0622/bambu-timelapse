@@ -1554,3 +1554,151 @@ dd { margin: 0; color: #d9dde2; overflow-wrap: anywhere; }
 :root[data-theme="light"] .snapshot-rewind {
   color: #6f7984;
 }
+
+
+.capture-config-label {
+  vertical-align: top;
+  padding-top: 18px;
+}
+
+.capture-config-cell {
+  padding-top: 8px;
+  padding-bottom: 14px;
+}
+
+.capture-config-panel {
+  width: 100%;
+  max-width: 520px;
+  padding: 14px;
+  border: 1px solid #242b33;
+  border-radius: 14px;
+  background: #0d1115;
+}
+
+.capture-mode-switch {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid #272e36;
+  border-radius: 10px;
+  background: #11161b;
+}
+
+.capture-mode-switch button {
+  min-height: 34px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #78838e;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.capture-mode-switch button.active {
+  background: #f1f3f5;
+  color: #161b20;
+  font-weight: 650;
+}
+
+.capture-config-input {
+  margin-top: 16px;
+}
+
+.capture-config-input label {
+  display: block;
+  margin-bottom: 7px;
+  color: #8b95a0;
+  font-size: 11px;
+}
+
+.capture-number-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.capture-number-field input {
+  width: 150px;
+  height: 40px;
+  padding: 0 11px;
+  border: 1px solid #2a323b;
+  border-radius: 9px;
+  outline: none;
+  background: #0a0e12;
+  color: #edf1f4;
+  font-size: 13px;
+}
+
+.capture-number-field input:focus {
+  border-color: #65717e;
+  box-shadow: 0 0 0 3px rgba(133, 147, 162, .10);
+}
+
+.capture-number-field span {
+  color: #737d88;
+  font-size: 12px;
+}
+
+.capture-config-input small {
+  display: block;
+  margin-top: 8px;
+  color: #68727d;
+  line-height: 1.6;
+  font-size: 10px;
+}
+
+.capture-config-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.capture-config-message {
+  color: #74d99a;
+  font-size: 11px;
+}
+
+:root[data-theme="light"] .capture-config-panel {
+  border-color: #dde3e8;
+  background: #f7f9fa;
+}
+
+:root[data-theme="light"] .capture-mode-switch {
+  border-color: #d7dde3;
+  background: #eef2f5;
+}
+
+:root[data-theme="light"] .capture-mode-switch button {
+  color: #68727d;
+}
+
+:root[data-theme="light"] .capture-mode-switch button.active {
+  background: #20262d;
+  color: #ffffff;
+}
+
+:root[data-theme="light"] .capture-number-field input {
+  border-color: #d5dce2;
+  background: #ffffff;
+  color: #20262d;
+}
+
+:root[data-theme="light"] .capture-config-message {
+  color: #2f9d59;
+}
+
+@media (max-width: 560px) {
+  .capture-config-panel {
+    max-width: none;
+  }
+
+  .capture-config-actions {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .capture-number-field input {
+    width: 100%;
+  }
+}
