@@ -86,17 +86,46 @@ class CaptureService:
             if settings.snapshot_delay > 0:
                 time.sleep(settings.snapshot_delay)
 
+            runtime = db.get_app_settings(
+                (
+                    "capture_rewind_mode",
+                    "capture_rewind_frames",
+                    "capture_rewind_ms",
+                )
+            )
+
+            rewind_mode = runtime.get(
+                "capture_rewind_mode",
+                settings.capture_rewind_mode,
+            )
+            rewind_frames = int(
+                runtime.get(
+                    "capture_rewind_frames",
+                    settings.capture_rewind_frames,
+                )
+            )
+            rewind_ms = int(
+                runtime.get(
+                    "capture_rewind_ms",
+                    settings.capture_rewind_ms,
+                )
+            )
+
             (
                 ok,
                 acquisition_ms,
                 error,
                 source,
                 frame_age_ms,
-                rewind_ms,
+                frame_offset,
+                rewind_ms_applied,
                 frame_before_trigger_ms,
             ) = camera.snapshot(
                 target,
                 trigger_at=triggered_at,
+                rewind_mode=rewind_mode,
+                rewind_frames=rewind_frames,
+                rewind_ms=rewind_ms_applied,
             )
 
             duration_ms = int(
@@ -113,7 +142,8 @@ class CaptureService:
                     duration_ms=duration_ms,
                     source=source,
                     frame_age_ms=frame_age_ms,
-                    rewind_ms=rewind_ms,
+                    frame_offset=frame_offset,
+                    rewind_ms=rewind_ms_applied,
                     frame_before_trigger_ms=frame_before_trigger_ms,
                 )
 
@@ -127,7 +157,9 @@ class CaptureService:
                         "duration_ms": duration_ms,
                         "acquisition_ms": acquisition_ms,
                         "frame_age_ms": frame_age_ms,
-                        "rewind_ms": rewind_ms,
+                        "frame_offset": frame_offset,
+                        "rewind_mode": rewind_mode,
+                        "rewind_ms": rewind_ms_applied,
                         "frame_before_trigger_ms": frame_before_trigger_ms,
                         "source": source,
                     },
@@ -143,7 +175,7 @@ class CaptureService:
                     error=error,
                     source=source,
                     frame_age_ms=frame_age_ms,
-                    rewind_ms=rewind_ms,
+                    rewind_ms=rewind_ms_applied,
                     frame_before_trigger_ms=frame_before_trigger_ms,
                 )
 
@@ -156,7 +188,7 @@ class CaptureService:
                         "duration_ms": duration_ms,
                         "acquisition_ms": acquisition_ms,
                         "frame_age_ms": frame_age_ms,
-                        "rewind_ms": rewind_ms,
+                        "rewind_ms": rewind_ms_applied,
                         "frame_before_trigger_ms": frame_before_trigger_ms,
                         "error": error,
                         "source": source,
