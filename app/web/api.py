@@ -51,6 +51,13 @@ class VisionCaptureRequest(BaseModel):
     target_h: int
 
 
+class VisionTemplateRequest(BaseModel):
+    x: int
+    y: int
+    w: int
+    h: int
+
+
 def _session_cookie(request: Request):
     return request.cookies.get(auth_service.COOKIE_NAME)
 
@@ -653,11 +660,143 @@ def update_vision_capture(payload: VisionCaptureRequest):
     }
 
 
+def _vision_template_path():
+    value = db.get_app_setting("vision_template_path")
+
+    if value:
+        return Path(value)
+
+    return (
+        settings.database_path.parent
+        / "vision"
+        / "head-template.jpg"
+    )
+
+
+@router.get("/settings/vision-calibration-image")
+def vision_calibration_image():
+    latest = db.get_latest_snapshot()
+
+    if not latest or not latest.get("file_path"):
+        raise HTTPException(
+            status_code=404,
+            detail="暂无可用于视觉标定的抓拍图片",
+        )
+
+    path = Path(latest["file_path"])
+
+    if not path.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail="标定图片文件不存在",
+        )
+
+    return {
+        "job_id": latest["job_id"],
+        "layer": latest["layer"],
+        "snapshot_id": latest["id"],
+        "url": (
+            f"/api/jobs/{latest['job_id']}/frames/"
+            f"{path.name}"
+        ),
+    }
+
+
+@router.get("/settings/vision-template")
+def vision_template():
+    path = _vision_template_path()
+
+    if not path.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail="尚未生成喷头模板",
+        )
+
+    return FileResponse(path)
+
+
+@router.post("/settings/vision-template")
+def update_vision_template(payload: VisionTemplateRequest):
+    from PIL import Image
+
+    latest = db.get_latest_snapshot()
+
+    if not latest or not latest.get("file_path"):
+        raise HTTPException(
+            status_code=404,
+            detail="暂无可用于生成模板的抓拍图片",
+        )
+
+    source = Path(latest["file_path"])
+
+    if not source.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail="源抓拍图片不存在",
+        )
+
+    if min(payload.w, payload.h) < 8:
+        raise HTTPException(
+            status_code=400,
+            detail="模板区域太小",
+        )
+
+    with Image.open(source) as image:
+        width, height = image.size
+
+        x = max(0, min(payload.x, width - 1))
+        y = max(0, min(payload.y, height - 1))
+        w = max(1, min(payload.w, width - x))
+        h = max(1, min(payload.h, height - y))
+
+        target = _vision_template_path()
+        target.parent.mkdir(parents=True, exist_ok=True)
+
+        image.crop(
+            (x, y, x + w, y + h)
+        ).convert("RGB").save(
+            target,
+            "JPEG",
+            quality=95,
+        )
+
+    db.set_app_settings(
+        {
+            "vision_template_path": str(target),
+            "vision_template_x": x,
+            "vision_template_y": y,
+            "vision_template_w": w,
+            "vision_template_h": h,
+        }
+    )
+
+    return {
+        "ok": True,
+        "template": {
+            "configured": True,
+            "x": x,
+            "y": y,
+            "w": w,
+            "h": h,
+            "url": "/api/settings/vision-template",
+        },
+    }
+
+
 @router.get("/settings")
 def get_settings():
     capture_timing = _capture_timing_settings()
     debug_capture = _debug_capture_settings()
     vision_capture = _vision_capture_settings()
+    template_values = db.get_app_settings(
+        (
+            "vision_template_x",
+            "vision_template_y",
+            "vision_template_w",
+            "vision_template_h",
+        )
+    )
+    template_path = _vision_template_path()
 
     return {
         "bambu": {
@@ -688,7 +827,21 @@ def get_settings():
             "capture_rewind_frames": capture_timing["frames"],
             "capture_rewind_ms": capture_timing["milliseconds"],
             "debug_capture": debug_capture,
-            "vision_capture": vision_capture,
+            "vision_capture": {
+                **vision_capture,
+                "template": {
+                    "configured": template_path.is_file(),
+                    "x": int(template_values.get("vision_template_x", "0")),
+                    "y": int(template_values.get("vision_template_y", "0")),
+                    "w": int(template_values.get("vision_template_w", "0")),
+                    "h": int(template_values.get("vision_template_h", "0")),
+                    "url": (
+                        "/api/settings/vision-template"
+                        if template_path.is_file()
+                        else None
+                    ),
+                },
+            },
         },
         "video": {
             "auto_generate_video": settings.auto_generate_video,
