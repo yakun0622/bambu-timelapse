@@ -23,6 +23,12 @@ class ChangePasswordRequest(BaseModel):
     new_password: str
 
 
+class CaptureTimingRequest(BaseModel):
+    mode: str
+    frames: int
+    milliseconds: int
+
+
 def _session_cookie(request: Request):
     return request.cookies.get(auth_service.COOKIE_NAME)
 
@@ -224,10 +230,12 @@ def manual_snapshot():
         error,
         source,
         frame_age_ms,
+        frame_offset,
         rewind_ms,
         frame_before_trigger_ms,
     ) = camera.snapshot(
         manual_path,
+        rewind_mode="time",
         rewind_ms=0,
     )
 
@@ -248,6 +256,7 @@ def manual_snapshot():
             "source": source,
             "duration_ms": duration_ms,
             "frame_age_ms": frame_age_ms,
+            "frame_offset": frame_offset,
             "rewind_ms": rewind_ms,
             "frame_before_trigger_ms": frame_before_trigger_ms,
         },
@@ -259,6 +268,7 @@ def manual_snapshot():
         "duration_ms": duration_ms,
         "source": source,
         "frame_age_ms": frame_age_ms,
+        "frame_offset": frame_offset,
         "rewind_ms": rewind_ms,
         "frame_before_trigger_ms": frame_before_trigger_ms,
     }
@@ -329,8 +339,86 @@ def video(job_id: int):
     )
 
 
+def _capture_timing_settings():
+    values = db.get_app_settings(
+        (
+            "capture_rewind_mode",
+            "capture_rewind_frames",
+            "capture_rewind_ms",
+        )
+    )
+
+    mode = values.get(
+        "capture_rewind_mode",
+        settings.capture_rewind_mode,
+    ).strip().lower()
+
+    if mode not in {"frame", "time"}:
+        mode = "time"
+
+    return {
+        "mode": mode,
+        "frames": max(
+            0,
+            int(
+                values.get(
+                    "capture_rewind_frames",
+                    settings.capture_rewind_frames,
+                )
+            ),
+        ),
+        "milliseconds": max(
+            0,
+            int(
+                values.get(
+                    "capture_rewind_ms",
+                    settings.capture_rewind_ms,
+                )
+            ),
+        ),
+    }
+
+
+@router.put("/settings/capture-timing")
+def update_capture_timing(payload: CaptureTimingRequest):
+    mode = payload.mode.strip().lower()
+
+    if mode not in {"frame", "time"}:
+        raise HTTPException(
+            status_code=400,
+            detail="回溯模式必须为 frame 或 time",
+        )
+
+    if payload.frames < 0 or payload.frames > 300:
+        raise HTTPException(
+            status_code=400,
+            detail="回溯帧数必须在 0 到 300 之间",
+        )
+
+    if payload.milliseconds < 0 or payload.milliseconds > 30000:
+        raise HTTPException(
+            status_code=400,
+            detail="回溯时间必须在 0 到 30000 ms 之间",
+        )
+
+    db.set_app_settings(
+        {
+            "capture_rewind_mode": mode,
+            "capture_rewind_frames": payload.frames,
+            "capture_rewind_ms": payload.milliseconds,
+        }
+    )
+
+    return {
+        "ok": True,
+        "capture_timing": _capture_timing_settings(),
+    }
+
+
 @router.get("/settings")
 def get_settings():
+    capture_timing = _capture_timing_settings()
+
     return {
         "bambu": {
             "mqtt_host": settings.mqtt_host,
@@ -358,7 +446,9 @@ def get_settings():
             "rtsp_frame_rate": settings.rtsp_frame_rate,
             "rtsp_frame_max_age": settings.rtsp_frame_max_age,
             "rtsp_history_frames": settings.rtsp_history_frames,
-            "capture_rewind_ms": settings.capture_rewind_ms,
+            "capture_rewind_mode": capture_timing["mode"],
+            "capture_rewind_frames": capture_timing["frames"],
+            "capture_rewind_ms": capture_timing["milliseconds"],
         },
         "video": {
             "auto_generate_video": settings.auto_generate_video,
