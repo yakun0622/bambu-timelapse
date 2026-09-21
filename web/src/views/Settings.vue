@@ -31,6 +31,16 @@ const visionCapture = ref({
 const savingVision = ref(false);
 const visionMessage = ref("");
 
+const calibrationImage = ref(null);
+const calibrationImageRef = ref(null);
+const drawMode = ref("");
+const drawing = ref(false);
+const drawStart = ref(null);
+const draftBox = ref(null);
+const templateBox = ref({ x: 0, y: 0, w: 0, h: 0 });
+const templateVersion = ref(Date.now());
+const savingTemplate = ref(false);
+
 async function loadSettings() {
   settings.value = await api("/api/settings");
 
@@ -49,6 +59,21 @@ async function loadSettings() {
     roi: { ...settings.value.capture.vision_capture.roi },
     target: { ...settings.value.capture.vision_capture.target }
   };
+
+  templateBox.value = {
+    x: settings.value.capture.vision_capture.template?.x || 0,
+    y: settings.value.capture.vision_capture.template?.y || 0,
+    w: settings.value.capture.vision_capture.template?.w || 0,
+    h: settings.value.capture.vision_capture.template?.h || 0
+  };
+
+  try {
+    calibrationImage.value = await api(
+      "/api/settings/vision-calibration-image"
+    );
+  } catch {
+    calibrationImage.value = null;
+  }
 }
 
 async function saveDebugCapture() {
@@ -68,6 +93,132 @@ async function saveDebugCapture() {
     debugMessage.value = error.message || "保存失败";
   } finally {
     savingDebug.value = false;
+  }
+}
+
+function imagePoint(event) {
+  const image = calibrationImageRef.value;
+  if (!image?.naturalWidth || !image?.naturalHeight) return null;
+
+  const rect = image.getBoundingClientRect();
+  const x = Math.max(0, Math.min(rect.width, event.clientX - rect.left));
+  const y = Math.max(0, Math.min(rect.height, event.clientY - rect.top));
+
+  return {
+    x: Math.round(x / rect.width * image.naturalWidth),
+    y: Math.round(y / rect.height * image.naturalHeight)
+  };
+}
+
+function boxStyle(box) {
+  const image = calibrationImageRef.value;
+  if (!image?.naturalWidth || !image?.naturalHeight || !box?.w || !box?.h) {
+    return { display: "none" };
+  }
+
+  return {
+    left: (box.x / image.naturalWidth * 100) + "%",
+    top: (box.y / image.naturalHeight * 100) + "%",
+    width: (box.w / image.naturalWidth * 100) + "%",
+    height: (box.h / image.naturalHeight * 100) + "%"
+  };
+}
+
+function startDraw(mode) {
+  drawMode.value = mode;
+  draftBox.value = null;
+}
+
+function onCalibrationPointerDown(event) {
+  if (!drawMode.value) return;
+
+  const point = imagePoint(event);
+  if (!point) return;
+
+  drawing.value = true;
+  drawStart.value = point;
+  draftBox.value = {
+    x: point.x,
+    y: point.y,
+    w: 0,
+    h: 0
+  };
+
+  event.currentTarget.setPointerCapture?.(event.pointerId);
+}
+
+function onCalibrationPointerMove(event) {
+  if (!drawing.value || !drawStart.value) return;
+
+  const point = imagePoint(event);
+  if (!point) return;
+
+  const x = Math.min(drawStart.value.x, point.x);
+  const y = Math.min(drawStart.value.y, point.y);
+  const w = Math.abs(point.x - drawStart.value.x);
+  const h = Math.abs(point.y - drawStart.value.y);
+
+  draftBox.value = { x, y, w, h };
+}
+
+function onCalibrationPointerUp(event) {
+  if (!drawing.value || !draftBox.value) return;
+
+  drawing.value = false;
+
+  const box = {
+    x: Math.round(draftBox.value.x),
+    y: Math.round(draftBox.value.y),
+    w: Math.max(1, Math.round(draftBox.value.w)),
+    h: Math.max(1, Math.round(draftBox.value.h))
+  };
+
+  if (drawMode.value === "roi") {
+    visionCapture.value.roi = box;
+  } else if (drawMode.value === "target") {
+    visionCapture.value.target = box;
+  } else if (drawMode.value === "template") {
+    templateBox.value = box;
+  }
+
+  draftBox.value = null;
+  drawMode.value = "";
+  event.currentTarget.releasePointerCapture?.(event.pointerId);
+}
+
+async function refreshCalibrationImage() {
+  try {
+    calibrationImage.value = await api(
+      "/api/settings/vision-calibration-image"
+    );
+  } catch (error) {
+    calibrationImage.value = null;
+    visionMessage.value = error.message || "暂无标定图片";
+  }
+}
+
+async function saveVisionTemplate() {
+  if (!templateBox.value.w || !templateBox.value.h) {
+    visionMessage.value = "请先在参考图上框选喷头模板";
+    return;
+  }
+
+  savingTemplate.value = true;
+  visionMessage.value = "";
+
+  try {
+    await api("/api/settings/vision-template", {
+      method: "POST",
+      body: JSON.stringify(templateBox.value)
+    });
+
+    templateVersion.value = Date.now();
+    visionMessage.value = "喷头模板已生成";
+    await loadSettings();
+  } catch (error) {
+    visionMessage.value = error.message || "生成模板失败";
+  } finally {
+    savingTemplate.value = false;
   }
 }
 
@@ -545,6 +696,133 @@ onMounted(loadSettings);
                 <span>H</span>
                 <input v-model.number="visionCapture.target.h" type="number" min="1" />
               </label>
+            </div>
+          </div>
+
+          <div class="vision-calibration-block">
+            <div class="vision-calibration-head">
+              <div>
+                <strong>画面标定</strong>
+                <small>
+                  直接在最近抓拍上拖框设置搜索区域、停靠区域和喷头模板。
+                </small>
+              </div>
+
+              <button
+                type="button"
+                class="button secondary-button"
+                @click="refreshCalibrationImage"
+              >
+                刷新参考图
+              </button>
+            </div>
+
+            <div
+              v-if="calibrationImage"
+              class="vision-calibration-stage"
+              :class="{ drawing: drawMode }"
+              @pointerdown="onCalibrationPointerDown"
+              @pointermove="onCalibrationPointerMove"
+              @pointerup="onCalibrationPointerUp"
+              @pointercancel="onCalibrationPointerUp"
+            >
+              <img
+                ref="calibrationImageRef"
+                :src="calibrationImage.url + '?v=' + calibrationImage.snapshot_id"
+                alt="视觉标定参考图"
+                draggable="false"
+              />
+
+              <div
+                class="vision-box roi"
+                :style="boxStyle(visionCapture.roi)"
+              >
+                <span>搜索 ROI</span>
+              </div>
+
+              <div
+                class="vision-box target"
+                :style="boxStyle(visionCapture.target)"
+              >
+                <span>目标区域</span>
+              </div>
+
+              <div
+                class="vision-box template"
+                :style="boxStyle(templateBox)"
+              >
+                <span>喷头模板</span>
+              </div>
+
+              <div
+                v-if="draftBox"
+                class="vision-box draft"
+                :style="boxStyle(draftBox)"
+              ></div>
+            </div>
+
+            <div v-else class="vision-calibration-empty">
+              暂无抓拍图片。先完成一次抓拍，再回来进行视觉标定。
+            </div>
+
+            <div class="vision-calibration-tools">
+              <button
+                type="button"
+                class="button secondary-button"
+                :class="{ active: drawMode === 'roi' }"
+                :disabled="!calibrationImage"
+                @click="startDraw('roi')"
+              >
+                拖框搜索 ROI
+              </button>
+
+              <button
+                type="button"
+                class="button secondary-button"
+                :class="{ active: drawMode === 'target' }"
+                :disabled="!calibrationImage"
+                @click="startDraw('target')"
+              >
+                拖框目标区域
+              </button>
+
+              <button
+                type="button"
+                class="button secondary-button"
+                :class="{ active: drawMode === 'template' }"
+                :disabled="!calibrationImage"
+                @click="startDraw('template')"
+              >
+                框选喷头模板
+              </button>
+
+              <button
+                type="button"
+                class="button"
+                :disabled="savingTemplate || !templateBox.w"
+                @click="saveVisionTemplate"
+              >
+                {{ savingTemplate ? "正在生成…" : "生成喷头模板" }}
+              </button>
+            </div>
+
+            <div
+              v-if="settings.capture.vision_capture.template?.configured"
+              class="vision-template-preview"
+            >
+              <div>
+                <small>当前喷头模板</small>
+                <strong>
+                  {{ settings.capture.vision_capture.template.w }}
+                  ×
+                  {{ settings.capture.vision_capture.template.h }}
+                </strong>
+              </div>
+
+              <img
+                :src="'/api/settings/vision-template?v=' + templateVersion"
+                alt="喷头模板"
+              />
             </div>
           </div>
 
