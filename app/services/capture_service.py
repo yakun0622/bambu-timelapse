@@ -125,7 +125,7 @@ class CaptureService:
                 trigger_at=triggered_at,
                 rewind_mode=rewind_mode,
                 rewind_frames=rewind_frames,
-                rewind_ms=rewind_ms_applied,
+                rewind_ms=rewind_ms,
             )
 
             duration_ms = int(
@@ -175,6 +175,7 @@ class CaptureService:
                     error=error,
                     source=source,
                     frame_age_ms=frame_age_ms,
+                    frame_offset=frame_offset,
                     rewind_ms=rewind_ms_applied,
                     frame_before_trigger_ms=frame_before_trigger_ms,
                 )
@@ -188,6 +189,8 @@ class CaptureService:
                         "duration_ms": duration_ms,
                         "acquisition_ms": acquisition_ms,
                         "frame_age_ms": frame_age_ms,
+                        "frame_offset": frame_offset,
+                        "rewind_mode": rewind_mode,
                         "rewind_ms": rewind_ms_applied,
                         "frame_before_trigger_ms": frame_before_trigger_ms,
                         "error": error,
