@@ -36,6 +36,14 @@ class Settings:
         10,
         int(os.getenv("RTSP_HISTORY_FRAMES", "60")),
     )
+    capture_rewind_mode: str = os.getenv(
+        "CAPTURE_REWIND_MODE",
+        "time",
+    ).strip().lower()
+    capture_rewind_frames: int = max(
+        0,
+        int(os.getenv("CAPTURE_REWIND_FRAMES", "5")),
+    )
     capture_rewind_ms: int = max(
         0,
         int(os.getenv("CAPTURE_REWIND_MS", "1000")),
