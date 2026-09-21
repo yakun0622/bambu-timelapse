@@ -20,6 +20,17 @@ const debugCapture = ref({
 const savingDebug = ref(false);
 const debugMessage = ref("");
 
+const visionCapture = ref({
+  lookback_ms: 6000,
+  match_threshold: 0.78,
+  stable_px: 8,
+  stable_frames: 2,
+  roi: { x: 700, y: 0, w: 580, h: 260 },
+  target: { x: 760, y: 20, w: 450, h: 180 }
+});
+const savingVision = ref(false);
+const visionMessage = ref("");
+
 async function loadSettings() {
   settings.value = await api("/api/settings");
 
@@ -31,6 +42,12 @@ async function loadSettings() {
 
   debugCapture.value = {
     ...settings.value.capture.debug_capture
+  };
+
+  visionCapture.value = {
+    ...settings.value.capture.vision_capture,
+    roi: { ...settings.value.capture.vision_capture.roi },
+    target: { ...settings.value.capture.vision_capture.target }
   };
 }
 
@@ -51,6 +68,45 @@ async function saveDebugCapture() {
     debugMessage.value = error.message || "保存失败";
   } finally {
     savingDebug.value = false;
+  }
+}
+
+async function saveVisionCapture() {
+  savingVision.value = true;
+  visionMessage.value = "";
+
+  try {
+    const payload = {
+      lookback_ms: visionCapture.value.lookback_ms,
+      match_threshold: visionCapture.value.match_threshold,
+      stable_px: visionCapture.value.stable_px,
+      stable_frames: visionCapture.value.stable_frames,
+      roi_x: visionCapture.value.roi.x,
+      roi_y: visionCapture.value.roi.y,
+      roi_w: visionCapture.value.roi.w,
+      roi_h: visionCapture.value.roi.h,
+      target_x: visionCapture.value.target.x,
+      target_y: visionCapture.value.target.y,
+      target_w: visionCapture.value.target.w,
+      target_h: visionCapture.value.target.h
+    };
+
+    const response = await api("/api/settings/vision-capture", {
+      method: "PUT",
+      body: JSON.stringify(payload)
+    });
+
+    visionCapture.value = {
+      ...response.vision_capture,
+      roi: { ...response.vision_capture.roi },
+      target: { ...response.vision_capture.target }
+    };
+    visionMessage.value = "视觉参数已保存";
+    await loadSettings();
+  } catch (error) {
+    visionMessage.value = error.message || "保存失败";
+  } finally {
+    savingVision.value = false;
   }
 }
 
@@ -370,6 +426,146 @@ onMounted(loadSettings);
             每 {{ settings.capture.capture_every_layers }} 层
           </dd>
         </dl>
+      </article>
+
+      <article class="card vision-settings-card">
+        <div class="card-title">
+          <span>视觉定位参数</span>
+          <span>Vision</span>
+        </div>
+
+        <div class="vision-settings-body">
+          <p class="vision-settings-note">
+            这些参数会保存到数据库，后续视觉选帧直接读取，调整后无需修改 .env。
+          </p>
+
+          <div class="vision-basic-grid">
+            <label>
+              <span>历史搜索范围</span>
+              <div class="capture-number-field">
+                <input
+                  v-model.number="visionCapture.lookback_ms"
+                  type="number"
+                  min="500"
+                  max="30000"
+                  step="100"
+                />
+                <span>ms</span>
+              </div>
+            </label>
+
+            <label>
+              <span>模板匹配阈值</span>
+              <div class="capture-number-field">
+                <input
+                  v-model.number="visionCapture.match_threshold"
+                  type="number"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                />
+              </div>
+            </label>
+
+            <label>
+              <span>稳定允许位移</span>
+              <div class="capture-number-field">
+                <input
+                  v-model.number="visionCapture.stable_px"
+                  type="number"
+                  min="0"
+                  max="200"
+                  step="1"
+                />
+                <span>px</span>
+              </div>
+            </label>
+
+            <label>
+              <span>连续稳定帧</span>
+              <div class="capture-number-field">
+                <input
+                  v-model.number="visionCapture.stable_frames"
+                  type="number"
+                  min="1"
+                  max="20"
+                  step="1"
+                />
+                <span>帧</span>
+              </div>
+            </label>
+          </div>
+
+          <div class="vision-region-block">
+            <div>
+              <strong>搜索 ROI</strong>
+              <small>只在这个区域内寻找喷头。</small>
+            </div>
+
+            <div class="vision-region-grid">
+              <label>
+                <span>X</span>
+                <input v-model.number="visionCapture.roi.x" type="number" min="0" />
+              </label>
+              <label>
+                <span>Y</span>
+                <input v-model.number="visionCapture.roi.y" type="number" min="0" />
+              </label>
+              <label>
+                <span>W</span>
+                <input v-model.number="visionCapture.roi.w" type="number" min="1" />
+              </label>
+              <label>
+                <span>H</span>
+                <input v-model.number="visionCapture.roi.h" type="number" min="1" />
+              </label>
+            </div>
+          </div>
+
+          <div class="vision-region-block">
+            <div>
+              <strong>目标停靠区域</strong>
+              <small>喷头进入这个区域时，才视为候选拍摄位置。</small>
+            </div>
+
+            <div class="vision-region-grid">
+              <label>
+                <span>X</span>
+                <input v-model.number="visionCapture.target.x" type="number" min="0" />
+              </label>
+              <label>
+                <span>Y</span>
+                <input v-model.number="visionCapture.target.y" type="number" min="0" />
+              </label>
+              <label>
+                <span>W</span>
+                <input v-model.number="visionCapture.target.w" type="number" min="1" />
+              </label>
+              <label>
+                <span>H</span>
+                <input v-model.number="visionCapture.target.h" type="number" min="1" />
+              </label>
+            </div>
+          </div>
+
+          <div class="capture-config-actions">
+            <button
+              type="button"
+              class="button"
+              :disabled="savingVision"
+              @click="saveVisionCapture"
+            >
+              {{ savingVision ? "正在保存…" : "保存视觉参数" }}
+            </button>
+
+            <span
+              v-if="visionMessage"
+              class="capture-config-message"
+            >
+              {{ visionMessage }}
+            </span>
+          </div>
+        </div>
       </article>
 
       <article class="card">
