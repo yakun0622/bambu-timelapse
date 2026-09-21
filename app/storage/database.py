@@ -89,6 +89,16 @@ class Database:
                     value TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS debug_snapshots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    job_id INTEGER NOT NULL,
+                    layer INTEGER NOT NULL,
+                    rewind_ms INTEGER NOT NULL,
+                    actual_before_trigger_ms INTEGER,
+                    file_path TEXT NOT NULL,
+                    captured_at TEXT NOT NULL
+                );
                 """
             )
 
@@ -118,6 +128,10 @@ class Database:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_auth_sessions_token "
                 "ON auth_sessions(token_hash)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_debug_snapshots_job_layer "
+                "ON debug_snapshots(job_id, layer)"
             )
 
     def get_app_setting(self, key, default=None):
@@ -162,6 +176,52 @@ class Database:
                     """,
                     (key, str(value), now),
                 )
+
+    def add_debug_snapshot(
+        self,
+        job_id,
+        layer,
+        rewind_ms,
+        actual_before_trigger_ms,
+        file_path,
+    ):
+        now = datetime.now(timezone.utc).isoformat()
+
+        with self._lock, self.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO debug_snapshots
+                (
+                    job_id,
+                    layer,
+                    rewind_ms,
+                    actual_before_trigger_ms,
+                    file_path,
+                    captured_at
+                )
+                VALUES (?,?,?,?,?,?)
+                """,
+                (
+                    job_id,
+                    layer,
+                    rewind_ms,
+                    actual_before_trigger_ms,
+                    str(file_path),
+                    now,
+                ),
+            )
+
+    def list_debug_snapshots(self, job_id):
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM debug_snapshots
+                WHERE job_id=?
+                ORDER BY layer DESC, rewind_ms DESC
+                """,
+                (job_id,),
+            ).fetchall()
+            return [dict(row) for row in rows]
 
     def create_job(
         self,
@@ -430,6 +490,7 @@ class Database:
                 (job_id,),
             ).fetchall()
             job["snapshots"] = [dict(row) for row in shots]
+            job["debug_snapshots"] = self.list_debug_snapshots(job_id)
             return job
 
     def user_count(self):
