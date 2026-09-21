@@ -65,6 +65,10 @@ class Database:
                     selection_mode TEXT,
                     vision_score REAL,
                     vision_stable INTEGER,
+                    bed_score REAL,
+                    bed_stable INTEGER,
+                    align_dx INTEGER,
+                    align_dy INTEGER,
                     error TEXT,
                     UNIQUE(job_id, layer)
                 );
@@ -116,6 +120,10 @@ class Database:
             self._ensure_column(conn, "snapshots", "selection_mode", "TEXT")
             self._ensure_column(conn, "snapshots", "vision_score", "REAL")
             self._ensure_column(conn, "snapshots", "vision_stable", "INTEGER")
+            self._ensure_column(conn, "snapshots", "bed_score", "REAL")
+            self._ensure_column(conn, "snapshots", "bed_stable", "INTEGER")
+            self._ensure_column(conn, "snapshots", "align_dx", "INTEGER")
+            self._ensure_column(conn, "snapshots", "align_dy", "INTEGER")
             self._ensure_column(
                 conn,
                 "snapshots",
@@ -394,6 +402,10 @@ class Database:
         selection_mode=None,
         vision_score=None,
         vision_stable=None,
+        bed_score=None,
+        bed_stable=None,
+        align_dx=None,
+        align_dy=None,
     ):
         now = datetime.now(timezone.utc).isoformat()
 
@@ -421,9 +433,13 @@ class Database:
                     selection_mode,
                     vision_score,
                     vision_stable,
+                    bed_score,
+                    bed_stable,
+                    align_dx,
+                    align_dy,
                     error
                 )
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     job_id,
@@ -444,6 +460,14 @@ class Database:
                         if vision_stable is None
                         else int(bool(vision_stable))
                     ),
+                    bed_score,
+                    (
+                        None
+                        if bed_stable is None
+                        else int(bool(bed_stable))
+                    ),
+                    align_dx,
+                    align_dy,
                     error,
                 ),
             )
