@@ -143,12 +143,6 @@ onMounted(loadSettings);
           <dt>自动抓拍</dt>
           <dd>{{ settings.capture.auto_capture ? "开启" : "关闭" }}</dd>
 
-          <dt>抓拍延迟</dt>
-          <dd>{{ settings.capture.snapshot_delay }} 秒</dd>
-
-          <dt>RTSP 超时</dt>
-          <dd>{{ settings.capture.rtsp_capture_timeout }} 秒</dd>
-
           <dt>RTSP 缓冲帧率</dt>
           <dd>{{ settings.capture.rtsp_frame_rate }} FPS</dd>
 
