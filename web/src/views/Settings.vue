@@ -23,10 +23,16 @@ const debugMessage = ref("");
 const visionCapture = ref({
   lookback_ms: 6000,
   match_threshold: 0.78,
+  bed_match_threshold: 0.78,
   stable_px: 8,
+  bed_stable_px: 8,
   stable_frames: 2,
+  align_enabled: true,
+  align_max_shift_px: 30,
   roi: { x: 700, y: 0, w: 580, h: 260 },
-  target: { x: 760, y: 20, w: 450, h: 180 }
+  target: { x: 760, y: 20, w: 180, h: 100 },
+  bed_roi: { x: 0, y: 250, w: 1280, h: 470 },
+  bed_target: { x: 0, y: 250, w: 1280, h: 470 }
 });
 const savingVision = ref(false);
 const visionMessage = ref("");
@@ -38,9 +44,12 @@ const drawing = ref(false);
 const drawStart = ref(null);
 const draftBox = ref(null);
 const templateBox = ref({ x: 0, y: 0, w: 0, h: 0 });
+const bedTemplateBox = ref({ x: 0, y: 0, w: 0, h: 0 });
 const templateVersion = ref(Date.now());
+const bedTemplateVersion = ref(Date.now());
 const calibrationRenderVersion = ref(0);
 const savingTemplate = ref(false);
+const savingBedTemplate = ref(false);
 
 async function loadSettings() {
   settings.value = await api("/api/settings");
@@ -58,7 +67,9 @@ async function loadSettings() {
   visionCapture.value = {
     ...settings.value.capture.vision_capture,
     roi: { ...settings.value.capture.vision_capture.roi },
-    target: { ...settings.value.capture.vision_capture.target }
+    target: { ...settings.value.capture.vision_capture.target },
+    bed_roi: { ...settings.value.capture.vision_capture.bed_roi },
+    bed_target: { ...settings.value.capture.vision_capture.bed_target }
   };
 
   templateBox.value = {
@@ -66,6 +77,13 @@ async function loadSettings() {
     y: settings.value.capture.vision_capture.template?.y || 0,
     w: settings.value.capture.vision_capture.template?.w || 0,
     h: settings.value.capture.vision_capture.template?.h || 0
+  };
+
+  bedTemplateBox.value = {
+    x: settings.value.capture.vision_capture.bed_template?.x || 0,
+    y: settings.value.capture.vision_capture.bed_template?.y || 0,
+    w: settings.value.capture.vision_capture.bed_template?.w || 0,
+    h: settings.value.capture.vision_capture.bed_template?.h || 0
   };
 
   try {
@@ -181,6 +199,12 @@ function onCalibrationPointerUp(event) {
     visionCapture.value.target = box;
   } else if (drawMode.value === "template") {
     templateBox.value = box;
+  } else if (drawMode.value === "bed_roi") {
+    visionCapture.value.bed_roi = box;
+  } else if (drawMode.value === "bed_target") {
+    visionCapture.value.bed_target = box;
+  } else if (drawMode.value === "bed_template") {
+    bedTemplateBox.value = box;
   }
 
   draftBox.value = null;
@@ -227,6 +251,34 @@ async function saveVisionTemplate() {
   }
 }
 
+async function saveBedTemplate() {
+  if (!bedTemplateBox.value.w || !bedTemplateBox.value.h) {
+    visionMessage.value = "请先在参考图上框选热床锚点模板";
+    return;
+  }
+
+  savingBedTemplate.value = true;
+  visionMessage.value = "";
+
+  try {
+    await api("/api/settings/vision-bed-template", {
+      method: "POST",
+      body: JSON.stringify({
+        snapshot_id: calibrationImage.value.snapshot_id,
+        ...bedTemplateBox.value
+      })
+    });
+
+    bedTemplateVersion.value = Date.now();
+    visionMessage.value = "热床锚点模板已生成";
+    await loadSettings();
+  } catch (error) {
+    visionMessage.value = error.message || "生成热床模板失败";
+  } finally {
+    savingBedTemplate.value = false;
+  }
+}
+
 async function saveVisionCapture() {
   savingVision.value = true;
   visionMessage.value = "";
@@ -235,8 +287,12 @@ async function saveVisionCapture() {
     const payload = {
       lookback_ms: visionCapture.value.lookback_ms,
       match_threshold: visionCapture.value.match_threshold,
+      bed_match_threshold: visionCapture.value.bed_match_threshold,
       stable_px: visionCapture.value.stable_px,
+      bed_stable_px: visionCapture.value.bed_stable_px,
       stable_frames: visionCapture.value.stable_frames,
+      align_enabled: visionCapture.value.align_enabled,
+      align_max_shift_px: visionCapture.value.align_max_shift_px,
       roi_x: visionCapture.value.roi.x,
       roi_y: visionCapture.value.roi.y,
       roi_w: visionCapture.value.roi.w,
@@ -244,7 +300,15 @@ async function saveVisionCapture() {
       target_x: visionCapture.value.target.x,
       target_y: visionCapture.value.target.y,
       target_w: visionCapture.value.target.w,
-      target_h: visionCapture.value.target.h
+      target_h: visionCapture.value.target.h,
+      bed_roi_x: visionCapture.value.bed_roi.x,
+      bed_roi_y: visionCapture.value.bed_roi.y,
+      bed_roi_w: visionCapture.value.bed_roi.w,
+      bed_roi_h: visionCapture.value.bed_roi.h,
+      bed_target_x: visionCapture.value.bed_target.x,
+      bed_target_y: visionCapture.value.bed_target.y,
+      bed_target_w: visionCapture.value.bed_target.w,
+      bed_target_h: visionCapture.value.bed_target.h
     };
 
     const response = await api("/api/settings/vision-capture", {
@@ -255,7 +319,9 @@ async function saveVisionCapture() {
     visionCapture.value = {
       ...response.vision_capture,
       roi: { ...response.vision_capture.roi },
-      target: { ...response.vision_capture.target }
+      target: { ...response.vision_capture.target },
+      bed_roi: { ...response.vision_capture.bed_roi },
+      bed_target: { ...response.vision_capture.bed_target }
     };
     visionMessage.value = "视觉参数已保存";
     await loadSettings();
@@ -631,7 +697,7 @@ onMounted(loadSettings);
             </label>
 
             <label>
-              <span>模板匹配阈值</span>
+              <span>喷头匹配阈值</span>
               <div class="capture-number-field">
                 <input
                   v-model.number="visionCapture.match_threshold"
@@ -644,10 +710,37 @@ onMounted(loadSettings);
             </label>
 
             <label>
-              <span>稳定允许位移</span>
+              <span>热床匹配阈值</span>
+              <div class="capture-number-field">
+                <input
+                  v-model.number="visionCapture.bed_match_threshold"
+                  type="number"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                />
+              </div>
+            </label>
+
+            <label>
+              <span>喷头稳定允许位移</span>
               <div class="capture-number-field">
                 <input
                   v-model.number="visionCapture.stable_px"
+                  type="number"
+                  min="0"
+                  max="200"
+                  step="1"
+                />
+                <span>px</span>
+              </div>
+            </label>
+
+            <label>
+              <span>热床稳定允许位移</span>
+              <div class="capture-number-field">
+                <input
+                  v-model.number="visionCapture.bed_stable_px"
                   type="number"
                   min="0"
                   max="200"
@@ -668,6 +761,31 @@ onMounted(loadSettings);
                   step="1"
                 />
                 <span>帧</span>
+              </div>
+            </label>
+
+            <label class="vision-align-toggle">
+              <span>自动画面对齐</span>
+              <div class="vision-toggle-line">
+                <input
+                  v-model="visionCapture.align_enabled"
+                  type="checkbox"
+                />
+                <span>根据热床锚点进行平移校正</span>
+              </div>
+            </label>
+
+            <label>
+              <span>最大对齐位移</span>
+              <div class="capture-number-field">
+                <input
+                  v-model.number="visionCapture.align_max_shift_px"
+                  type="number"
+                  min="0"
+                  max="300"
+                  step="1"
+                />
+                <span>px</span>
               </div>
             </label>
           </div>
@@ -721,6 +839,34 @@ onMounted(loadSettings);
                 <span>H</span>
                 <input v-model.number="visionCapture.target.h" type="number" min="1" />
               </label>
+            </div>
+          </div>
+
+          <div class="vision-region-block">
+            <div>
+              <strong>热床搜索 ROI</strong>
+              <small>只在这个区域内寻找随热床移动的固定锚点。</small>
+            </div>
+
+            <div class="vision-region-grid">
+              <label><span>X</span><input v-model.number="visionCapture.bed_roi.x" type="number" min="0" /></label>
+              <label><span>Y</span><input v-model.number="visionCapture.bed_roi.y" type="number" min="0" /></label>
+              <label><span>W</span><input v-model.number="visionCapture.bed_roi.w" type="number" min="1" /></label>
+              <label><span>H</span><input v-model.number="visionCapture.bed_roi.h" type="number" min="1" /></label>
+            </div>
+          </div>
+
+          <div class="vision-region-block">
+            <div>
+              <strong>热床目标区域</strong>
+              <small>热床锚点进入该区域后，才允许成为候选延时帧。</small>
+            </div>
+
+            <div class="vision-region-grid">
+              <label><span>X</span><input v-model.number="visionCapture.bed_target.x" type="number" min="0" /></label>
+              <label><span>Y</span><input v-model.number="visionCapture.bed_target.y" type="number" min="0" /></label>
+              <label><span>W</span><input v-model.number="visionCapture.bed_target.w" type="number" min="1" /></label>
+              <label><span>H</span><input v-model.number="visionCapture.bed_target.h" type="number" min="1" /></label>
             </div>
           </div>
 
@@ -781,6 +927,27 @@ onMounted(loadSettings);
               </div>
 
               <div
+                class="vision-box bed-roi"
+                :style="boxStyle(visionCapture.bed_roi)"
+              >
+                <span>热床 ROI</span>
+              </div>
+
+              <div
+                class="vision-box bed-target"
+                :style="boxStyle(visionCapture.bed_target)"
+              >
+                <span>热床目标</span>
+              </div>
+
+              <div
+                class="vision-box bed-template"
+                :style="boxStyle(bedTemplateBox)"
+              >
+                <span>热床模板</span>
+              </div>
+
+              <div
                 v-if="draftBox"
                 class="vision-box draft"
                 :style="boxStyle(draftBox)"
@@ -824,6 +991,36 @@ onMounted(loadSettings);
 
               <button
                 type="button"
+                class="button secondary-button"
+                :class="{ active: drawMode === 'bed_roi' }"
+                :disabled="!calibrationImage"
+                @click="startDraw('bed_roi')"
+              >
+                拖框热床 ROI
+              </button>
+
+              <button
+                type="button"
+                class="button secondary-button"
+                :class="{ active: drawMode === 'bed_target' }"
+                :disabled="!calibrationImage"
+                @click="startDraw('bed_target')"
+              >
+                拖框热床目标区
+              </button>
+
+              <button
+                type="button"
+                class="button secondary-button"
+                :class="{ active: drawMode === 'bed_template' }"
+                :disabled="!calibrationImage"
+                @click="startDraw('bed_template')"
+              >
+                框选热床锚点
+              </button>
+
+              <button
+                type="button"
                 class="button"
                 :disabled="savingTemplate || !templateBox.w"
                 @click="saveVisionTemplate"
@@ -848,6 +1045,36 @@ onMounted(loadSettings);
               <img
                 :src="'/api/settings/vision-template?v=' + templateVersion"
                 alt="喷头模板"
+              />
+            </div>
+
+            <div class="vision-calibration-tools">
+              <button
+                type="button"
+                class="button"
+                :disabled="savingBedTemplate || !bedTemplateBox.w"
+                @click="saveBedTemplate"
+              >
+                {{ savingBedTemplate ? "正在生成…" : "生成热床锚点模板" }}
+              </button>
+            </div>
+
+            <div
+              v-if="settings.capture.vision_capture.bed_template?.configured"
+              class="vision-template-preview"
+            >
+              <div>
+                <small>当前热床锚点模板</small>
+                <strong>
+                  {{ settings.capture.vision_capture.bed_template.w }}
+                  ×
+                  {{ settings.capture.vision_capture.bed_template.h }}
+                </strong>
+              </div>
+
+              <img
+                :src="'/api/settings/vision-bed-template?v=' + bedTemplateVersion"
+                alt="热床锚点模板"
               />
             </div>
           </div>
