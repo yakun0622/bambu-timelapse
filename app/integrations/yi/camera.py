@@ -484,6 +484,24 @@ class YiCamera:
             None,
         )
 
+    def get_history_window(
+        self,
+        trigger_at,
+        lookback_ms,
+    ):
+        start_at = trigger_at - max(0, int(lookback_ms)) / 1000.0
+
+        with self._rtsp_lock:
+            return [
+                {
+                    "seq": item["seq"],
+                    "at": item["at"],
+                    "data": item["data"],
+                }
+                for item in self._rtsp_history
+                if start_at <= item["at"] <= trigger_at
+            ]
+
     def capture_history_frame(
         self,
         target: Path,
