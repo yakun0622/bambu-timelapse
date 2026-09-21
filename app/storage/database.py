@@ -83,6 +83,12 @@ class Database:
                     expires_at TEXT NOT NULL,
                     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
                 );
+
+                CREATE TABLE IF NOT EXISTS app_settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
                 """
             )
 
@@ -113,6 +119,49 @@ class Database:
                 "CREATE INDEX IF NOT EXISTS idx_auth_sessions_token "
                 "ON auth_sessions(token_hash)"
             )
+
+    def get_app_setting(self, key, default=None):
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT value FROM app_settings WHERE key=?",
+                (key,),
+            ).fetchone()
+            return row["value"] if row else default
+
+    def get_app_settings(self, keys=None):
+        with self.connect() as conn:
+            if keys:
+                placeholders = ",".join("?" for _ in keys)
+                rows = conn.execute(
+                    f"SELECT key,value FROM app_settings "
+                    f"WHERE key IN ({placeholders})",
+                    tuple(keys),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT key,value FROM app_settings"
+                ).fetchall()
+
+            return {
+                row["key"]: row["value"]
+                for row in rows
+            }
+
+    def set_app_settings(self, values):
+        now = datetime.now(timezone.utc).isoformat()
+
+        with self._lock, self.connect() as conn:
+            for key, value in values.items():
+                conn.execute(
+                    """
+                    INSERT INTO app_settings (key,value,updated_at)
+                    VALUES (?,?,?)
+                    ON CONFLICT(key) DO UPDATE SET
+                        value=excluded.value,
+                        updated_at=excluded.updated_at
+                    """,
+                    (key, str(value), now),
+                )
 
     def create_job(
         self,
