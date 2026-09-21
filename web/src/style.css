@@ -2365,3 +2365,37 @@ dd { margin: 0; color: #d9dde2; overflow-wrap: anywhere; }
     max-height: 120px;
   }
 }
+
+
+.vision-toggle-line {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #737d88;
+  font-size: 11px;
+}
+
+.vision-toggle-line input {
+  accent-color: #dce2e8;
+}
+
+.vision-box.bed-roi {
+  color: #a77cff;
+}
+
+.vision-box.bed-target {
+  color: #ff8f6b;
+}
+
+.vision-box.bed-template {
+  color: #52d6c7;
+}
+
+:root[data-theme="light"] .vision-toggle-line {
+  color: #65707b;
+}
+
+:root[data-theme="light"] .vision-toggle-line input {
+  accent-color: #303840;
+}
