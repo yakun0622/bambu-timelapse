@@ -404,7 +404,7 @@ def _capture_timing_settings():
         settings.capture_rewind_mode,
     ).strip().lower()
 
-    if mode not in {"frame", "time"}:
+    if mode not in {"frame", "time", "vision"}:
         mode = "time"
 
     return {
@@ -434,10 +434,10 @@ def _capture_timing_settings():
 def update_capture_timing(payload: CaptureTimingRequest):
     mode = payload.mode.strip().lower()
 
-    if mode not in {"frame", "time"}:
+    if mode not in {"frame", "time", "vision"}:
         raise HTTPException(
             status_code=400,
-            detail="回溯模式必须为 frame 或 time",
+            detail="抓拍定位模式必须为 frame、time 或 vision",
         )
 
     if payload.frames < 0 or payload.frames > 300:
