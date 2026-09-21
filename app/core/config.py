@@ -22,9 +22,6 @@ class Settings:
     yi_rtsp_path: str = os.getenv("YI_RTSP_PATH", "/ch0_0.h264")
     yi_rtsp_url: str = os.getenv("YI_RTSP_URL", "")
     capture_source: str = os.getenv("CAPTURE_SOURCE", "auto").strip().lower()
-    rtsp_capture_timeout: float = float(
-        os.getenv("RTSP_CAPTURE_TIMEOUT", "4")
-    )
     rtsp_frame_rate: int = max(
         1,
         int(os.getenv("RTSP_FRAME_RATE", "5")),
@@ -49,7 +46,6 @@ class Settings:
         int(os.getenv("CAPTURE_REWIND_MS", "1000")),
     )
 
-    snapshot_delay: float = float(os.getenv("SNAPSHOT_DELAY", "0.5"))
     snapshot_retries: int = int(os.getenv("SNAPSHOT_RETRIES", "3"))
     capture_every_layers: int = max(1, int(os.getenv("CAPTURE_EVERY_LAYERS", "1")))
     auto_capture: bool = os.getenv("AUTO_CAPTURE", "true").lower() in {"1", "true", "yes", "on"}
