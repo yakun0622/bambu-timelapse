@@ -6,29 +6,36 @@ import numpy as np
 
 
 class VisionSelector:
-    def _decode_gray(self, data: bytes):
+    def _decode(self, data: bytes, grayscale=False):
         array = np.frombuffer(data, dtype=np.uint8)
-        return cv2.imdecode(array, cv2.IMREAD_GRAYSCALE)
+        flag = cv2.IMREAD_GRAYSCALE if grayscale else cv2.IMREAD_COLOR
+        return cv2.imdecode(array, flag)
 
-    def _load_template(self, path: Path):
-        if not path or not path.is_file():
+    def _load_template(self, path):
+        if not path:
             return None
 
-        return cv2.imread(
-            str(path),
-            cv2.IMREAD_GRAYSCALE,
+        path = Path(path)
+        if not path.is_file():
+            return None
+
+        return cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
+
+    def _clip_rect(self, rect, frame_w, frame_h):
+        x = max(0, min(int(rect["x"]), frame_w - 1))
+        y = max(0, min(int(rect["y"]), frame_h - 1))
+        w = max(1, min(int(rect["w"]), frame_w - x))
+        h = max(1, min(int(rect["h"]), frame_h - y))
+        return x, y, w, h
+
+    def _detect(self, frame_gray, template, roi):
+        frame_h, frame_w = frame_gray.shape[:2]
+        x, y, w, h = self._clip_rect(
+            roi,
+            frame_w,
+            frame_h,
         )
-
-    def _detect(self, frame, template, roi):
-        frame_h, frame_w = frame.shape[:2]
-
-        x = max(0, min(int(roi["x"]), frame_w - 1))
-        y = max(0, min(int(roi["y"]), frame_h - 1))
-        w = max(1, min(int(roi["w"]), frame_w - x))
-        h = max(1, min(int(roi["h"]), frame_h - y))
-
-        crop = frame[y:y + h, x:x + w]
-
+        crop = frame_gray[y:y + h, x:x + w]
         template_h, template_w = template.shape[:2]
 
         if (
@@ -42,20 +49,17 @@ class VisionSelector:
             template,
             cv2.TM_CCOEFF_NORMED,
         )
-
         _, score, _, max_loc = cv2.minMaxLoc(result)
 
-        head_x = x + max_loc[0]
-        head_y = y + max_loc[1]
-        center_x = head_x + template_w / 2.0
-        center_y = head_y + template_h / 2.0
+        found_x = x + max_loc[0]
+        found_y = y + max_loc[1]
 
         return {
             "score": float(score),
-            "x": int(head_x),
-            "y": int(head_y),
-            "center_x": float(center_x),
-            "center_y": float(center_y),
+            "x": int(found_x),
+            "y": int(found_y),
+            "center_x": float(found_x + template_w / 2.0),
+            "center_y": float(found_y + template_h / 2.0),
             "w": int(template_w),
             "h": int(template_h),
         }
@@ -71,14 +75,24 @@ class VisionSelector:
             and y1 <= detection["center_y"] <= y2
         )
 
-    def _target_bonus(self, detection, target):
-        center_x = int(target["x"]) + int(target["w"]) / 2.0
-        center_y = int(target["y"]) + int(target["h"]) / 2.0
+    def _distance(self, a, b):
+        return math.hypot(
+            a["center_x"] - b["center_x"],
+            a["center_y"] - b["center_y"],
+        )
 
-        dx = detection["center_x"] - center_x
-        dy = detection["center_y"] - center_y
-        distance = math.hypot(dx, dy)
+    def _target_center(self, target):
+        return (
+            int(target["x"]) + int(target["w"]) / 2.0,
+            int(target["y"]) + int(target["h"]) / 2.0,
+        )
 
+    def _target_bonus(self, detection, target, weight=0.15):
+        center_x, center_y = self._target_center(target)
+        distance = math.hypot(
+            detection["center_x"] - center_x,
+            detection["center_y"] - center_y,
+        )
         diagonal = max(
             1.0,
             math.hypot(
@@ -86,145 +100,261 @@ class VisionSelector:
                 int(target["h"]),
             ),
         )
-
         normalized = min(1.0, distance / diagonal)
-        return (1.0 - normalized) * 0.25
+        return (1.0 - normalized) * weight
+
+    def _encode_jpeg(self, frame):
+        ok, encoded = cv2.imencode(
+            ".jpg",
+            frame,
+            [cv2.IMWRITE_JPEG_QUALITY, 95],
+        )
+        if not ok:
+            raise RuntimeError("JPEG 编码失败")
+        return encoded.tobytes()
+
+    def _align_by_bed(
+        self,
+        frame_data,
+        bed_detection,
+        bed_target,
+        max_shift_px,
+    ):
+        frame = self._decode(frame_data, grayscale=False)
+        if frame is None:
+            return frame_data, 0, 0
+
+        target_x, target_y = self._target_center(bed_target)
+
+        dx = int(round(target_x - bed_detection["center_x"]))
+        dy = int(round(target_y - bed_detection["center_y"]))
+
+        limit = max(0, int(max_shift_px))
+        if limit:
+            dx = max(-limit, min(limit, dx))
+            dy = max(-limit, min(limit, dy))
+
+        if dx == 0 and dy == 0:
+            return frame_data, 0, 0
+
+        height, width = frame.shape[:2]
+        matrix = np.float32(
+            [
+                [1, 0, dx],
+                [0, 1, dy],
+            ]
+        )
+
+        aligned = cv2.warpAffine(
+            frame,
+            matrix,
+            (width, height),
+            flags=cv2.INTER_LINEAR,
+            borderMode=cv2.BORDER_REPLICATE,
+        )
+
+        return self._encode_jpeg(aligned), dx, dy
 
     def select(
         self,
         history,
         trigger_at,
-        template_path,
-        roi,
-        target,
-        match_threshold=0.78,
+        head_template_path,
+        head_roi,
+        head_target,
+        bed_template_path,
+        bed_roi,
+        bed_target,
+        head_match_threshold=0.78,
+        bed_match_threshold=0.78,
         stable_px=8,
+        bed_stable_px=8,
         stable_frames=2,
+        align_enabled=True,
+        align_max_shift_px=30,
     ):
-        template = self._load_template(
-            Path(template_path)
-            if template_path
-            else None
+        head_template = self._load_template(
+            head_template_path
+        )
+        bed_template = self._load_template(
+            bed_template_path
         )
 
-        if template is None:
+        if head_template is None:
             return None, "喷头模板未配置"
+
+        if bed_template is None:
+            return None, "热床锚点模板未配置"
 
         if not history:
             return None, "RTSP 历史帧为空"
 
         stable_frames = max(1, int(stable_frames))
         stable_px = max(0, int(stable_px))
-        match_threshold = float(match_threshold)
+        bed_stable_px = max(0, int(bed_stable_px))
 
         candidates = []
-        previous = None
-        stable_run = 0
+        stable_run = []
 
         for item in history:
-            frame = self._decode_gray(item["data"])
+            frame_gray = self._decode(
+                item["data"],
+                grayscale=True,
+            )
 
-            if frame is None:
-                previous = None
-                stable_run = 0
+            if frame_gray is None:
+                stable_run = []
                 continue
 
-            detection = self._detect(
-                frame,
-                template,
-                roi,
+            head = self._detect(
+                frame_gray,
+                head_template,
+                head_roi,
+            )
+            bed = self._detect(
+                frame_gray,
+                bed_template,
+                bed_roi,
             )
 
-            if (
-                detection is None
-                or detection["score"] < match_threshold
-                or not self._in_target(detection, target)
-            ):
-                previous = None
-                stable_run = 0
+            valid = (
+                head is not None
+                and bed is not None
+                and head["score"] >= float(head_match_threshold)
+                and bed["score"] >= float(bed_match_threshold)
+                and self._in_target(head, head_target)
+                and self._in_target(bed, bed_target)
+            )
+
+            if not valid:
+                stable_run = []
                 continue
 
-            if previous is None:
-                stable_run = 1
-            else:
-                move = math.hypot(
-                    detection["center_x"]
-                    - previous["center_x"],
-                    detection["center_y"]
-                    - previous["center_y"],
+            if stable_run:
+                previous = stable_run[-1]
+                head_move = self._distance(
+                    previous["head"],
+                    head,
+                )
+                bed_move = self._distance(
+                    previous["bed"],
+                    bed,
                 )
 
-                if move <= stable_px:
-                    stable_run += 1
-                else:
-                    stable_run = 1
+                if (
+                    head_move > stable_px
+                    or bed_move > bed_stable_px
+                ):
+                    stable_run = []
 
-            previous = detection
+            candidate = {
+                "item": item,
+                "head": head,
+                "bed": bed,
+                "before_trigger_ms": int(
+                    (trigger_at - item["at"]) * 1000
+                ),
+            }
 
-            before_trigger_ms = int(
-                (trigger_at - item["at"]) * 1000
-            )
+            stable_run.append(candidate)
 
-            stable = stable_run >= stable_frames
+            if len(stable_run) >= stable_frames:
+                for run_item in stable_run:
+                    run_item["stable_count"] = len(
+                        stable_run
+                    )
 
-            final_score = (
-                detection["score"]
-                + self._target_bonus(
-                    detection,
-                    target,
+                if not candidates or (
+                    len(stable_run)
+                    > candidates[-1]["run_length"]
+                ):
+                    pass
+
+                candidate["run_length"] = len(stable_run)
+                candidates.append(
+                    {
+                        "frames": list(stable_run),
+                        "run_length": len(stable_run),
+                    }
                 )
-                + min(
-                    stable_run,
-                    stable_frames,
-                ) / stable_frames * 0.35
-            )
-
-            candidates.append(
-                {
-                    "item": item,
-                    "detection": detection,
-                    "match_score": detection["score"],
-                    "stable": stable,
-                    "stable_count": stable_run,
-                    "before_trigger_ms": before_trigger_ms,
-                    "final_score": final_score,
-                }
-            )
 
         if not candidates:
-            return None, "历史帧中没有找到符合目标区域的喷头"
+            return (
+                None,
+                "没有找到喷头和热床同时进入目标区域且连续稳定的帧",
+            )
 
-        stable_candidates = [
-            item
-            for item in candidates
-            if item["stable"]
-        ]
-
-        pool = stable_candidates or candidates
-        best = max(
-            pool,
-            key=lambda item: item["final_score"],
+        longest = max(
+            candidates,
+            key=lambda item: (
+                item["run_length"],
+                max(
+                    (
+                        frame["head"]["score"]
+                        + frame["bed"]["score"]
+                    )
+                    for frame in item["frames"]
+                ),
+            ),
         )
 
+        stable_frames_list = longest["frames"]
+        best = stable_frames_list[
+            len(stable_frames_list) // 2
+        ]
+
+        final_score = (
+            best["head"]["score"]
+            + best["bed"]["score"]
+            + self._target_bonus(
+                best["head"],
+                head_target,
+            )
+            + self._target_bonus(
+                best["bed"],
+                bed_target,
+            )
+        ) / 2.0
+
+        frame_data = best["item"]["data"]
+        align_dx = 0
+        align_dy = 0
+
+        if align_enabled:
+            frame_data, align_dx, align_dy = (
+                self._align_by_bed(
+                    frame_data,
+                    best["bed"],
+                    bed_target,
+                    align_max_shift_px,
+                )
+            )
+
         return {
-            "frame": best["item"]["data"],
+            "frame": frame_data,
             "seq": best["item"]["seq"],
             "at": best["item"]["at"],
             "before_trigger_ms": best["before_trigger_ms"],
-            "match_score": round(
-                best["match_score"],
+            "head_score": round(
+                best["head"]["score"],
+                4,
+            ),
+            "bed_score": round(
+                best["bed"]["score"],
                 4,
             ),
             "final_score": round(
-                best["final_score"],
+                final_score,
                 4,
             ),
-            "stable": best["stable"],
-            "stable_count": best["stable_count"],
-            "x": best["detection"]["x"],
-            "y": best["detection"]["y"],
-            "w": best["detection"]["w"],
-            "h": best["detection"]["h"],
+            "stable": True,
+            "stable_count": len(stable_frames_list),
+            "head_x": best["head"]["x"],
+            "head_y": best["head"]["y"],
+            "bed_x": best["bed"]["x"],
+            "bed_y": best["bed"]["y"],
+            "align_dx": align_dx,
+            "align_dy": align_dy,
         }, None
 
 
