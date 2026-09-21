@@ -258,6 +258,8 @@ class YiCamera:
                 "frames": self._rtsp_frames,
                 "history_frames": len(self._rtsp_history),
                 "history_capacity": settings.rtsp_history_frames,
+                "capture_rewind_mode": settings.capture_rewind_mode,
+                "capture_rewind_frames": settings.capture_rewind_frames,
                 "capture_rewind_ms": settings.capture_rewind_ms,
                 "reconnects": self._rtsp_reconnects,
                 "last_error": self._rtsp_last_error,
@@ -267,6 +269,8 @@ class YiCamera:
         self,
         target: Path,
         trigger_at=None,
+        rewind_mode=None,
+        rewind_frames=None,
         rewind_ms=None,
     ):
         source = settings.capture_source
@@ -280,11 +284,14 @@ class YiCamera:
                 duration_ms,
                 error,
                 frame_age_ms,
+                frame_offset,
                 requested_rewind_ms,
                 frame_before_trigger_ms,
             ) = self._snapshot_rtsp_buffer(
                 target,
                 trigger_at=trigger_at,
+                rewind_mode=rewind_mode,
+                rewind_frames=rewind_frames,
                 rewind_ms=rewind_ms,
             )
 
@@ -295,6 +302,7 @@ class YiCamera:
                     None,
                     "rtsp",
                     frame_age_ms,
+                    frame_offset,
                     requested_rewind_ms,
                     frame_before_trigger_ms,
                 )
@@ -306,6 +314,7 @@ class YiCamera:
                     error,
                     "rtsp",
                     frame_age_ms,
+                    frame_offset,
                     requested_rewind_ms,
                     frame_before_trigger_ms,
                 )
@@ -322,12 +331,15 @@ class YiCamera:
             None,
             None,
             None,
+            None,
         )
 
     def _snapshot_rtsp_buffer(
         self,
         target: Path,
         trigger_at=None,
+        rewind_mode=None,
+        rewind_frames=None,
         rewind_ms=None,
     ):
         started = time.monotonic()
@@ -336,6 +348,15 @@ class YiCamera:
             settings.rtsp_frame_max_age,
         )
 
+        mode = (rewind_mode or settings.capture_rewind_mode).strip().lower()
+        if mode not in {"frame", "time"}:
+            mode = "time"
+
+        requested_frames = (
+            settings.capture_rewind_frames
+            if rewind_frames is None
+            else max(0, int(rewind_frames))
+        )
         requested_rewind_ms = (
             settings.capture_rewind_ms
             if rewind_ms is None
@@ -363,19 +384,47 @@ class YiCamera:
                 <= settings.rtsp_frame_max_age * 1000
             ):
                 if trigger_at is None:
-                    target_at = history[-1]["at"]
+                    anchor_index = len(history) - 1
                 else:
-                    target_at = (
-                        trigger_at
-                        - requested_rewind_ms / 1000.0
-                    )
+                    anchor_index = None
+                    for index in range(
+                        len(history) - 1,
+                        -1,
+                        -1,
+                    ):
+                        if history[index]["at"] <= trigger_at:
+                            anchor_index = index
+                            break
 
-                selected = min(
-                    history,
-                    key=lambda item: abs(
-                        item["at"] - target_at
-                    ),
-                )
+                    if anchor_index is None:
+                        anchor_index = 0
+
+                if mode == "frame":
+                    selected_index = max(
+                        0,
+                        anchor_index - requested_frames,
+                    )
+                    selected = history[selected_index]
+                    frame_offset = selected_index - anchor_index
+                    effective_rewind_ms = None
+                else:
+                    if trigger_at is None:
+                        target_at = history[anchor_index]["at"]
+                    else:
+                        target_at = (
+                            trigger_at
+                            - requested_rewind_ms / 1000.0
+                        )
+
+                    selected_index = min(
+                        range(len(history)),
+                        key=lambda index: abs(
+                            history[index]["at"] - target_at
+                        ),
+                    )
+                    selected = history[selected_index]
+                    frame_offset = selected_index - anchor_index
+                    effective_rewind_ms = requested_rewind_ms
 
                 selected_at = selected["at"]
                 frame = selected["data"]
@@ -406,7 +455,8 @@ class YiCamera:
                     ),
                     None,
                     frame_age_ms,
-                    requested_rewind_ms,
+                    frame_offset,
+                    effective_rewind_ms,
                     frame_before_trigger_ms,
                 )
 
@@ -429,7 +479,8 @@ class YiCamera:
             ),
             error,
             status.get("frame_age_ms"),
-            requested_rewind_ms,
+            None,
+            requested_rewind_ms if mode == "time" else None,
             None,
         )
 
