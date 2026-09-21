@@ -232,7 +232,7 @@ function eventMessage(event) {
           ? "HTTP 回退"
           : "";
       const duration = d.duration_ms !== undefined
-        ? ` · ${d.duration_ms} ms`
+        ? ` · 耗时 ${d.duration_ms} ms`
         : "";
       const frameAge = d.frame_age_ms !== null
         && d.frame_age_ms !== undefined
