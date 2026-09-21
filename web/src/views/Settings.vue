@@ -3,10 +3,45 @@ import { onMounted, ref } from "vue";
 import { api } from "../api";
 
 const settings = ref(null);
-
-onMounted(async () => {
-  settings.value = await api("/api/settings");
+const captureTiming = ref({
+  mode: "time",
+  frames: 5,
+  milliseconds: 1000
 });
+const savingTiming = ref(false);
+const timingMessage = ref("");
+
+async function loadSettings() {
+  settings.value = await api("/api/settings");
+
+  captureTiming.value = {
+    mode: settings.value.capture.capture_rewind_mode,
+    frames: settings.value.capture.capture_rewind_frames,
+    milliseconds: settings.value.capture.capture_rewind_ms
+  };
+}
+
+async function saveCaptureTiming() {
+  savingTiming.value = true;
+  timingMessage.value = "";
+
+  try {
+    const response = await api("/api/settings/capture-timing", {
+      method: "PUT",
+      body: JSON.stringify(captureTiming.value)
+    });
+
+    captureTiming.value = response.capture_timing;
+    timingMessage.value = "已保存，下一次自动抓拍立即生效";
+    await loadSettings();
+  } catch (error) {
+    timingMessage.value = error.message || "保存失败";
+  } finally {
+    savingTiming.value = false;
+  }
+}
+
+onMounted(loadSettings);
 </script>
 
 <template>
@@ -123,13 +158,93 @@ onMounted(async () => {
           <dt>历史帧缓存</dt>
           <dd>{{ settings.capture.rtsp_history_frames }} 帧</dd>
 
-          <dt>自动抓拍回溯</dt>
-          <dd>
-            {{
-              settings.capture.capture_rewind_ms > 0
-                ? settings.capture.capture_rewind_ms + " ms"
-                : "触发时刻"
-            }}
+          <dt class="capture-config-label">自动抓拍回溯</dt>
+          <dd class="capture-config-cell">
+            <div class="capture-config-panel">
+              <div class="capture-mode-switch">
+                <button
+                  type="button"
+                  :class="{ active: captureTiming.mode === 'frame' }"
+                  @click="captureTiming.mode = 'frame'"
+                >
+                  按帧回退
+                </button>
+
+                <button
+                  type="button"
+                  :class="{ active: captureTiming.mode === 'time' }"
+                  @click="captureTiming.mode = 'time'"
+                >
+                  按时间回退
+                </button>
+              </div>
+
+              <div
+                v-if="captureTiming.mode === 'frame'"
+                class="capture-config-input"
+              >
+                <label>回退帧数</label>
+                <div class="capture-number-field">
+                  <input
+                    v-model.number="captureTiming.frames"
+                    type="number"
+                    min="0"
+                    max="300"
+                    step="1"
+                  />
+                  <span>帧</span>
+                </div>
+                <small>
+                  当前 RTSP {{ settings.capture.rtsp_frame_rate }} FPS，
+                  {{ captureTiming.frames }} 帧约等于
+                  {{
+                    Math.round(
+                      captureTiming.frames
+                      / settings.capture.rtsp_frame_rate
+                      * 1000
+                    )
+                  }} ms。
+                </small>
+              </div>
+
+              <div
+                v-else
+                class="capture-config-input"
+              >
+                <label>回退时间</label>
+                <div class="capture-number-field">
+                  <input
+                    v-model.number="captureTiming.milliseconds"
+                    type="number"
+                    min="0"
+                    max="30000"
+                    step="50"
+                  />
+                  <span>ms</span>
+                </div>
+                <small>
+                  从 MQTT 换层消息到达时间向前查找最接近的历史帧。
+                </small>
+              </div>
+
+              <div class="capture-config-actions">
+                <button
+                  type="button"
+                  class="button"
+                  :disabled="savingTiming"
+                  @click="saveCaptureTiming"
+                >
+                  {{ savingTiming ? "正在保存…" : "保存抓拍策略" }}
+                </button>
+
+                <span
+                  v-if="timingMessage"
+                  class="capture-config-message"
+                >
+                  {{ timingMessage }}
+                </span>
+              </div>
+            </div>
           </dd>
 
           <dt>HTTP 失败重试</dt>
