@@ -11,6 +11,15 @@ const captureTiming = ref({
 const savingTiming = ref(false);
 const timingMessage = ref("");
 
+const debugCapture = ref({
+  enabled: false,
+  start_ms: 3000,
+  end_ms: 0,
+  interval_ms: 500
+});
+const savingDebug = ref(false);
+const debugMessage = ref("");
+
 async function loadSettings() {
   settings.value = await api("/api/settings");
 
@@ -19,6 +28,30 @@ async function loadSettings() {
     frames: settings.value.capture.capture_rewind_frames,
     milliseconds: settings.value.capture.capture_rewind_ms
   };
+
+  debugCapture.value = {
+    ...settings.value.capture.debug_capture
+  };
+}
+
+async function saveDebugCapture() {
+  savingDebug.value = true;
+  debugMessage.value = "";
+
+  try {
+    const response = await api("/api/settings/debug-capture", {
+      method: "PUT",
+      body: JSON.stringify(debugCapture.value)
+    });
+
+    debugCapture.value = response.debug_capture;
+    debugMessage.value = "已保存，下一次换层立即生效";
+    await loadSettings();
+  } catch (error) {
+    debugMessage.value = error.message || "保存失败";
+  } finally {
+    savingDebug.value = false;
+  }
 }
 
 async function saveCaptureTiming() {
@@ -236,6 +269,94 @@ onMounted(loadSettings);
                   class="capture-config-message"
                 >
                   {{ timingMessage }}
+                </span>
+              </div>
+            </div>
+          </dd>
+
+          <dt class="capture-config-label">抓帧调试模式</dt>
+          <dd class="capture-config-cell">
+            <div class="capture-config-panel debug-capture-panel">
+              <label class="debug-toggle-row">
+                <input
+                  v-model="debugCapture.enabled"
+                  type="checkbox"
+                />
+                <span>
+                  <strong>开启调试模式</strong>
+                  <small>
+                    每次换层额外保存一组历史帧，用于寻找喷头最佳位置。
+                  </small>
+                </span>
+              </label>
+
+              <div class="debug-grid">
+                <label>
+                  <span>最早回溯</span>
+                  <div class="capture-number-field">
+                    <input
+                      v-model.number="debugCapture.start_ms"
+                      type="number"
+                      min="0"
+                      max="30000"
+                      step="100"
+                    />
+                    <span>ms</span>
+                  </div>
+                </label>
+
+                <label>
+                  <span>最晚回溯</span>
+                  <div class="capture-number-field">
+                    <input
+                      v-model.number="debugCapture.end_ms"
+                      type="number"
+                      min="0"
+                      max="30000"
+                      step="100"
+                    />
+                    <span>ms</span>
+                  </div>
+                </label>
+
+                <label>
+                  <span>采样间隔</span>
+                  <div class="capture-number-field">
+                    <input
+                      v-model.number="debugCapture.interval_ms"
+                      type="number"
+                      min="50"
+                      max="5000"
+                      step="50"
+                    />
+                    <span>ms</span>
+                  </div>
+                </label>
+              </div>
+
+              <p class="debug-preview-text">
+                当前将采样：
+                -{{ Math.max(debugCapture.start_ms, debugCapture.end_ms) }} ms
+                到
+                -{{ Math.min(debugCapture.start_ms, debugCapture.end_ms) }} ms，
+                间隔 {{ debugCapture.interval_ms }} ms。
+              </p>
+
+              <div class="capture-config-actions">
+                <button
+                  type="button"
+                  class="button"
+                  :disabled="savingDebug"
+                  @click="saveDebugCapture"
+                >
+                  {{ savingDebug ? "正在保存…" : "保存调试配置" }}
+                </button>
+
+                <span
+                  v-if="debugMessage"
+                  class="capture-config-message"
+                >
+                  {{ debugMessage }}
                 </span>
               </div>
             </div>
