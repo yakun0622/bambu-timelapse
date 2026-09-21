@@ -29,7 +29,7 @@ The web interface currently provides:
 - **Dashboard** — printer status, current task, camera status, latest snapshot, and live events
 - **Print Jobs** — job history, captured frames, task identifiers, and video downloads
 - **Devices** — printer information and Yi camera connectivity checks
-- **Settings** — current Bambu, camera, capture, and video configuration
+- **Settings** — current Bambu, camera, capture, and video configuration, including live capture-rewind mode tuning
 
 The current frontend UI is primarily Chinese, while this README is maintained in English.
 
@@ -188,9 +188,16 @@ Automatic capture also requires the print to be in an active printing state and 
 
 By default, frame acquisition uses `CAPTURE_SOURCE=auto`. The RTSP URL is built automatically from `YI_IP`, `YI_USER`, `YI_PASSWORD`, `YI_RTSP_PORT`, and `YI_RTSP_PATH`. A persistent FFmpeg process keeps the RTSP stream open and stores a rolling history of decoded JPEG frames in memory.
 
-Bambu layer notifications can arrive after the physical layer transition has already happened. To compensate, automatic capture uses `CAPTURE_REWIND_MS` to select the buffered RTSP frame closest to a target time before the MQTT layer-change trigger. The default value is `1000`, meaning the service aims for the frame closest to one second before the notification.
+Bambu layer notifications can arrive after the physical layer transition has already happened. The rewind strategy is selectable at runtime from the Settings page and is persisted in SQLite.
 
-This time-based approach is independent of `RTSP_FRAME_RATE`, so changing the buffer frame rate does not change the intended rewind duration. Manual snapshots use a rewind of `0`. If the RTSP buffer is unavailable or stale, `auto` mode falls back to the HTTP snapshot CGI.
+Two modes are available:
+
+- `frame`: select the newest buffered frame at or before the MQTT trigger, then move backward by `CAPTURE_REWIND_FRAMES`.
+- `time`: select the buffered frame closest to `CAPTURE_REWIND_MS` milliseconds before the MQTT trigger.
+
+The environment variables provide defaults only. Once saved in the web UI, the database values take precedence and apply to the next automatic capture without rebuilding the container.
+
+Manual snapshots always use the current frame with no rewind. If the RTSP buffer is unavailable or stale, `auto` mode falls back to the HTTP snapshot CGI.
 
 ## Quick Start with Docker
 
@@ -275,6 +282,8 @@ RTSP_CAPTURE_TIMEOUT=4
 RTSP_FRAME_RATE=5
 RTSP_FRAME_MAX_AGE=1.0
 RTSP_HISTORY_FRAMES=60
+CAPTURE_REWIND_MODE=time
+CAPTURE_REWIND_FRAMES=5
 CAPTURE_REWIND_MS=1000
 
 AUTO_CAPTURE=true
@@ -311,7 +320,9 @@ Main options:
 | `RTSP_FRAME_RATE` | Number of JPEG frames per second kept by the persistent RTSP buffer |
 | `RTSP_FRAME_MAX_AGE` | Maximum acceptable age of the newest buffered frame |
 | `RTSP_HISTORY_FRAMES` | Number of recent RTSP frames retained in memory |
-| `CAPTURE_REWIND_MS` | Target milliseconds before the layer-change notification used for automatic RTSP frame selection |
+| `CAPTURE_REWIND_MODE` | Default rewind mode: `frame` or `time` |
+| `CAPTURE_REWIND_FRAMES` | Default number of RTSP frames to move backward in frame mode |
+| `CAPTURE_REWIND_MS` | Default milliseconds before the layer-change notification in time mode |
 | `AUTO_CAPTURE` | Enable automatic layer snapshots |
 | `SNAPSHOT_DELAY` | Delay before taking a snapshot |
 | `SNAPSHOT_RETRIES` | Number of snapshot retries |
