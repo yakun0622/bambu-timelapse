@@ -30,10 +30,33 @@ const previewProgress = computed(() => {
   return ((previewIndex.value + 1) / total) * 100;
 });
 
+const debugGroups = computed(() => {
+  const rows = selected.value?.debug_snapshots || [];
+  const grouped = new Map();
+
+  for (const shot of rows) {
+    if (!grouped.has(shot.layer)) grouped.set(shot.layer, []);
+    grouped.get(shot.layer).push(shot);
+  }
+
+  return [...grouped.entries()]
+    .sort((a, b) => b[0] - a[0])
+    .slice(0, 8)
+    .map(([layer, shots]) => ({
+      layer,
+      shots: shots.sort((a, b) => b.rewind_ms - a.rewind_ms)
+    }));
+});
+
 function frameUrl(shot) {
   if (!selected.value || !shot?.file_path) return "";
   const filename = shot.file_path.split("/").pop();
   return `/api/jobs/${selected.value.id}/frames/${filename}`;
+}
+
+function debugFrameUrl(shot) {
+  if (!selected.value || !shot?.id) return "";
+  return `/api/jobs/${selected.value.id}/debug-frames/${shot.id}`;
 }
 
 function statusLabel(value) {
@@ -360,6 +383,54 @@ onBeforeUnmount(() => {
               预览直接依次播放已抓拍照片，不生成临时视频；
               打印过程中每 5 秒自动同步新增照片。
             </p>
+          </section>
+
+          <section
+            v-if="debugGroups.length"
+            class="debug-capture-results"
+          >
+            <div class="debug-results-head">
+              <div>
+                <small>抓帧调试结果</small>
+                <strong>对比 MQTT 触发前不同时间点的画面</strong>
+              </div>
+              <span>最近 {{ debugGroups.length }} 层</span>
+            </div>
+
+            <div
+              v-for="group in debugGroups"
+              :key="group.layer"
+              class="debug-layer-group"
+            >
+              <div class="debug-layer-title">
+                <strong>第 {{ group.layer }} 层</strong>
+                <span>{{ group.shots.length }} 张候选帧</span>
+              </div>
+
+              <div class="debug-frame-grid">
+                <figure
+                  v-for="shot in group.shots"
+                  :key="shot.id"
+                  class="debug-frame-card"
+                >
+                  <img
+                    :src="debugFrameUrl(shot)"
+                    :alt="`第 ${group.layer} 层 -${shot.rewind_ms}ms`"
+                  />
+                  <figcaption>
+                    <strong>-{{ shot.rewind_ms }} ms</strong>
+                    <span>
+                      实际
+                      {{
+                        shot.actual_before_trigger_ms !== null
+                          ? "-" + shot.actual_before_trigger_ms + " ms"
+                          : "—"
+                      }}
+                    </span>
+                  </figcaption>
+                </figure>
+              </div>
+            </div>
           </section>
 
           <div class="frame-grid">
