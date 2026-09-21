@@ -40,6 +40,9 @@ class VisionCaptureRequest(BaseModel):
     lookback_ms: int
     match_threshold: float
     bed_match_threshold: float
+    bed_locator_mode: str
+    aruco_id: int
+    aruco_dictionary: str
     stable_px: int
     bed_stable_px: int
     stable_frames: int
@@ -549,6 +552,9 @@ def _vision_capture_settings():
             "vision_lookback_ms",
             "vision_match_threshold",
             "vision_bed_match_threshold",
+            "vision_bed_locator_mode",
+            "vision_aruco_id",
+            "vision_aruco_dictionary",
             "vision_stable_px",
             "vision_bed_stable_px",
             "vision_stable_frames",
@@ -592,6 +598,18 @@ def _vision_capture_settings():
                 float(values.get("vision_bed_match_threshold", "0.78")),
             ),
         ),
+        "bed_locator_mode": values.get(
+            "vision_bed_locator_mode",
+            "aruco",
+        ).strip().lower(),
+        "aruco_id": max(
+            0,
+            int(values.get("vision_aruco_id", "23")),
+        ),
+        "aruco_dictionary": values.get(
+            "vision_aruco_dictionary",
+            "DICT_4X4_50",
+        ).strip().upper(),
         "stable_px": max(
             0,
             int(values.get("vision_stable_px", "8")),
@@ -657,6 +675,33 @@ def update_vision_capture(payload: VisionCaptureRequest):
         raise HTTPException(
             status_code=400,
             detail="热床模板匹配阈值必须在 0 到 1 之间",
+        )
+
+    bed_locator_mode = payload.bed_locator_mode.strip().lower()
+
+    if bed_locator_mode not in {"aruco", "template"}:
+        raise HTTPException(
+            status_code=400,
+            detail="热床定位方式必须为 aruco 或 template",
+        )
+
+    allowed_dictionaries = {
+        "DICT_4X4_50",
+        "DICT_4X4_100",
+        "DICT_5X5_50",
+    }
+    aruco_dictionary = payload.aruco_dictionary.strip().upper()
+
+    if aruco_dictionary not in allowed_dictionaries:
+        raise HTTPException(
+            status_code=400,
+            detail="不支持的 ArUco 字典",
+        )
+
+    if payload.aruco_id < 0 or payload.aruco_id > 999:
+        raise HTTPException(
+            status_code=400,
+            detail="ArUco ID 必须在 0 到 999 之间",
         )
 
     if not 0 <= payload.stable_px <= 200:
@@ -730,6 +775,9 @@ def update_vision_capture(payload: VisionCaptureRequest):
             "vision_lookback_ms": payload.lookback_ms,
             "vision_match_threshold": payload.match_threshold,
             "vision_bed_match_threshold": payload.bed_match_threshold,
+            "vision_bed_locator_mode": bed_locator_mode,
+            "vision_aruco_id": payload.aruco_id,
+            "vision_aruco_dictionary": aruco_dictionary,
             "vision_stable_px": payload.stable_px,
             "vision_bed_stable_px": payload.bed_stable_px,
             "vision_stable_frames": payload.stable_frames,
