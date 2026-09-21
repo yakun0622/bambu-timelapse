@@ -60,8 +60,12 @@ class CaptureService:
                 "debug_capture_interval_ms",
                 "vision_lookback_ms",
                 "vision_match_threshold",
+                "vision_bed_match_threshold",
                 "vision_stable_px",
+                "vision_bed_stable_px",
                 "vision_stable_frames",
+                "vision_align_enabled",
+                "vision_align_max_shift_px",
                 "vision_roi_x",
                 "vision_roi_y",
                 "vision_roi_w",
@@ -70,7 +74,16 @@ class CaptureService:
                 "vision_target_y",
                 "vision_target_w",
                 "vision_target_h",
+                "vision_bed_roi_x",
+                "vision_bed_roi_y",
+                "vision_bed_roi_w",
+                "vision_bed_roi_h",
+                "vision_bed_target_x",
+                "vision_bed_target_y",
+                "vision_bed_target_w",
+                "vision_bed_target_h",
                 "vision_template_path",
+                "vision_bed_template_path",
             )
         )
 
@@ -84,9 +97,16 @@ class CaptureService:
                 1.0,
                 max(
                     0.0,
+                    float(runtime.get("vision_match_threshold", "0.78")),
+                ),
+            ),
+            "bed_match_threshold": min(
+                1.0,
+                max(
+                    0.0,
                     float(
                         runtime.get(
-                            "vision_match_threshold",
+                            "vision_bed_match_threshold",
                             "0.78",
                         )
                     ),
@@ -96,9 +116,26 @@ class CaptureService:
                 0,
                 int(runtime.get("vision_stable_px", "8")),
             ),
+            "bed_stable_px": max(
+                0,
+                int(runtime.get("vision_bed_stable_px", "8")),
+            ),
             "stable_frames": max(
                 1,
                 int(runtime.get("vision_stable_frames", "2")),
+            ),
+            "align_enabled": runtime.get(
+                "vision_align_enabled",
+                "true",
+            ).lower() in {"1", "true", "yes", "on"},
+            "align_max_shift_px": max(
+                0,
+                int(
+                    runtime.get(
+                        "vision_align_max_shift_px",
+                        "30",
+                    )
+                ),
             ),
             "roi": {
                 "x": max(0, int(runtime.get("vision_roi_x", "700"))),
@@ -109,10 +146,25 @@ class CaptureService:
             "target": {
                 "x": max(0, int(runtime.get("vision_target_x", "760"))),
                 "y": max(0, int(runtime.get("vision_target_y", "20"))),
-                "w": max(1, int(runtime.get("vision_target_w", "450"))),
-                "h": max(1, int(runtime.get("vision_target_h", "180"))),
+                "w": max(1, int(runtime.get("vision_target_w", "180"))),
+                "h": max(1, int(runtime.get("vision_target_h", "100"))),
+            },
+            "bed_roi": {
+                "x": max(0, int(runtime.get("vision_bed_roi_x", "0"))),
+                "y": max(0, int(runtime.get("vision_bed_roi_y", "250"))),
+                "w": max(1, int(runtime.get("vision_bed_roi_w", "1280"))),
+                "h": max(1, int(runtime.get("vision_bed_roi_h", "470"))),
+            },
+            "bed_target": {
+                "x": max(0, int(runtime.get("vision_bed_target_x", "0"))),
+                "y": max(0, int(runtime.get("vision_bed_target_y", "250"))),
+                "w": max(1, int(runtime.get("vision_bed_target_w", "1280"))),
+                "h": max(1, int(runtime.get("vision_bed_target_h", "470"))),
             },
             "template_path": runtime.get("vision_template_path"),
+            "bed_template_path": runtime.get(
+                "vision_bed_template_path"
+            ),
         }
 
     def _capture_by_vision(
@@ -133,12 +185,19 @@ class CaptureService:
         result, vision_error = vision_selector.select(
             history=history,
             trigger_at=triggered_at,
-            template_path=config["template_path"],
-            roi=config["roi"],
-            target=config["target"],
-            match_threshold=config["match_threshold"],
+            head_template_path=config["template_path"],
+            head_roi=config["roi"],
+            head_target=config["target"],
+            bed_template_path=config["bed_template_path"],
+            bed_roi=config["bed_roi"],
+            bed_target=config["bed_target"],
+            head_match_threshold=config["match_threshold"],
+            bed_match_threshold=config["bed_match_threshold"],
             stable_px=config["stable_px"],
+            bed_stable_px=config["bed_stable_px"],
             stable_frames=config["stable_frames"],
+            align_enabled=config["align_enabled"],
+            align_max_shift_px=config["align_max_shift_px"],
         )
 
         if result:
@@ -164,12 +223,18 @@ class CaptureService:
                     "before_trigger_ms"
                 ],
                 "selection_mode": "vision",
-                "vision_score": result["match_score"],
+                "vision_score": result["head_score"],
+                "bed_score": result["bed_score"],
                 "vision_final_score": result["final_score"],
                 "vision_stable": result["stable"],
+                "bed_stable": result["stable"],
                 "vision_stable_count": result["stable_count"],
-                "vision_x": result["x"],
-                "vision_y": result["y"],
+                "vision_x": result["head_x"],
+                "vision_y": result["head_y"],
+                "bed_x": result["bed_x"],
+                "bed_y": result["bed_y"],
+                "align_dx": result["align_dx"],
+                "align_dy": result["align_dy"],
                 "vision_error": None,
             }
 
@@ -200,11 +265,17 @@ class CaptureService:
             "frame_before_trigger_ms": frame_before_trigger_ms,
             "selection_mode": "vision-fallback",
             "vision_score": None,
+            "bed_score": None,
             "vision_final_score": None,
             "vision_stable": None,
+            "bed_stable": None,
             "vision_stable_count": None,
             "vision_x": None,
             "vision_y": None,
+            "bed_x": None,
+            "bed_y": None,
+            "align_dx": None,
+            "align_dy": None,
             "vision_error": vision_error,
         }
 
@@ -396,11 +467,17 @@ class CaptureService:
                     "frame_before_trigger_ms": frame_before_trigger_ms,
                     "selection_mode": rewind_mode,
                     "vision_score": None,
+                    "bed_score": None,
                     "vision_final_score": None,
                     "vision_stable": None,
+                    "bed_stable": None,
                     "vision_stable_count": None,
                     "vision_x": None,
                     "vision_y": None,
+                    "bed_x": None,
+                    "bed_y": None,
+                    "align_dx": None,
+                    "align_dy": None,
                     "vision_error": None,
                 }
 
@@ -426,6 +503,10 @@ class CaptureService:
                     selection_mode=result["selection_mode"],
                     vision_score=result["vision_score"],
                     vision_stable=result["vision_stable"],
+                    bed_score=result["bed_score"],
+                    bed_stable=result["bed_stable"],
+                    align_dx=result["align_dx"],
+                    align_dy=result["align_dy"],
                 )
 
                 event_bus.emit(
@@ -447,15 +528,21 @@ class CaptureService:
                         "source": result["source"],
                         "selection_mode": result["selection_mode"],
                         "vision_score": result["vision_score"],
+                        "bed_score": result["bed_score"],
                         "vision_final_score": result[
                             "vision_final_score"
                         ],
                         "vision_stable": result["vision_stable"],
+                        "bed_stable": result["bed_stable"],
                         "vision_stable_count": result[
                             "vision_stable_count"
                         ],
                         "vision_x": result["vision_x"],
                         "vision_y": result["vision_y"],
+                        "bed_x": result["bed_x"],
+                        "bed_y": result["bed_y"],
+                        "align_dx": result["align_dx"],
+                        "align_dy": result["align_dy"],
                         "vision_error": result["vision_error"],
                     },
                 )
@@ -478,6 +565,10 @@ class CaptureService:
                     selection_mode=result["selection_mode"],
                     vision_score=result["vision_score"],
                     vision_stable=result["vision_stable"],
+                    bed_score=result["bed_score"],
+                    bed_stable=result["bed_stable"],
+                    align_dx=result["align_dx"],
+                    align_dy=result["align_dy"],
                 )
 
                 event_bus.emit(
