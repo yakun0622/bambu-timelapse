@@ -565,52 +565,79 @@ onBeforeUnmount(() => {
           <div class="snapshot-inline-head">
             <div>
               <small>最近抓拍</small>
-              <strong v-if="data.latest_snapshot">
-                第 {{ data.latest_snapshot.layer }} 层
-                <template v-if="data.latest_snapshot.source">
+
+              <template v-if="data.latest_snapshot">
+                <strong>
+                  第 {{ data.latest_snapshot.layer }} 层
+                  <template v-if="data.latest_snapshot.source">
+                    · {{
+                      data.latest_snapshot.source === "rtsp"
+                        ? "RTSP"
+                        : "HTTP"
+                    }}
+                  </template>
+                </strong>
+
+                <small
+                  v-if="data.latest_snapshot.selection_mode === 'vision'"
+                  class="snapshot-rewind"
+                >
+                  视觉定位 · 匹配
+                  {{ data.latest_snapshot.vision_score ?? "—" }}
                   · {{
-                    data.latest_snapshot.source === "rtsp"
-                      ? "RTSP"
-                      : "HTTP"
+                    data.latest_snapshot.vision_stable
+                      ? "稳定"
+                      : "未稳定"
                   }}
-                </template>
-              </strong>
-              <small
-                v-if="
-                  (
-                    data.latest_snapshot?.frame_offset !== null
-                    && data.latest_snapshot?.frame_offset !== undefined
-                    && data.latest_snapshot.frame_offset < 0
-                  )
-                  || (
-                    data.latest_snapshot?.rewind_ms !== null
-                    && data.latest_snapshot?.rewind_ms !== undefined
-                    && data.latest_snapshot.rewind_ms > 0
-                  )
-                "
-                class="snapshot-rewind"
-              >
-                <template
-                  v-if="
-                    data.latest_snapshot.frame_offset !== null
-                    && data.latest_snapshot.frame_offset !== undefined
-                    && data.latest_snapshot.frame_offset < 0
+                  <template
+                    v-if="
+                      data.latest_snapshot.frame_before_trigger_ms !== null
+                      && data.latest_snapshot.frame_before_trigger_ms !== undefined
+                    "
+                  >
+                    · 触发前
+                    {{ data.latest_snapshot.frame_before_trigger_ms }} ms
+                  </template>
+                </small>
+
+                <small
+                  v-else-if="
+                    (
+                      data.latest_snapshot.frame_offset !== null
+                      && data.latest_snapshot.frame_offset !== undefined
+                      && data.latest_snapshot.frame_offset < 0
+                    )
+                    || (
+                      data.latest_snapshot.rewind_ms !== null
+                      && data.latest_snapshot.rewind_ms !== undefined
+                      && data.latest_snapshot.rewind_ms > 0
+                    )
                   "
+                  class="snapshot-rewind"
                 >
-                  回溯 {{ Math.abs(data.latest_snapshot.frame_offset) }} 帧
-                </template>
-                <template v-else>
-                  回溯 {{ data.latest_snapshot.rewind_ms }} ms
-                </template>
-                <template
-                  v-if="
-                    data.latest_snapshot.frame_before_trigger_ms !== null
-                    && data.latest_snapshot.frame_before_trigger_ms !== undefined
-                  "
-                >
-                  · 触发前 {{ data.latest_snapshot.frame_before_trigger_ms }} ms
-                </template>
-              </small>
+                  <template
+                    v-if="
+                      data.latest_snapshot.frame_offset !== null
+                      && data.latest_snapshot.frame_offset !== undefined
+                      && data.latest_snapshot.frame_offset < 0
+                    "
+                  >
+                    回溯 {{ Math.abs(data.latest_snapshot.frame_offset) }} 帧
+                  </template>
+                  <template v-else>
+                    回溯 {{ data.latest_snapshot.rewind_ms }} ms
+                  </template>
+                  <template
+                    v-if="
+                      data.latest_snapshot.frame_before_trigger_ms !== null
+                      && data.latest_snapshot.frame_before_trigger_ms !== undefined
+                    "
+                  >
+                    · 触发前 {{ data.latest_snapshot.frame_before_trigger_ms }} ms
+                  </template>
+                </small>
+              </template>
+
               <strong v-else>暂无抓拍</strong>
             </div>
 
