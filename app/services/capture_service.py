@@ -529,6 +529,8 @@ class CaptureService:
                     vision_stable=result["vision_stable"],
                     bed_score=result["bed_score"],
                     bed_stable=result["bed_stable"],
+                    bed_locator_mode=result["bed_locator_mode"],
+                    aruco_id=result["aruco_id"],
                     align_dx=result["align_dx"],
                     align_dy=result["align_dy"],
                 )
