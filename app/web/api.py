@@ -439,10 +439,8 @@ def get_settings():
         },
         "capture": {
             "auto_capture": settings.auto_capture,
-            "snapshot_delay": settings.snapshot_delay,
             "snapshot_retries": settings.snapshot_retries,
             "capture_every_layers": settings.capture_every_layers,
-            "rtsp_capture_timeout": settings.rtsp_capture_timeout,
             "rtsp_frame_rate": settings.rtsp_frame_rate,
             "rtsp_frame_max_age": settings.rtsp_frame_max_age,
             "rtsp_history_frames": settings.rtsp_history_frames,
