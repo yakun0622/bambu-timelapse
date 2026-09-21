@@ -64,6 +64,106 @@ class VisionSelector:
             "h": int(template_h),
         }
 
+    def _aruco_dictionary(self, name):
+        dictionaries = {
+            "DICT_4X4_50": cv2.aruco.DICT_4X4_50,
+            "DICT_4X4_100": cv2.aruco.DICT_4X4_100,
+            "DICT_5X5_50": cv2.aruco.DICT_5X5_50,
+        }
+        dictionary_id = dictionaries.get(
+            str(name).upper(),
+            cv2.aruco.DICT_4X4_50,
+        )
+        return cv2.aruco.getPredefinedDictionary(
+            dictionary_id
+        )
+
+    def _detect_aruco(
+        self,
+        frame_gray,
+        roi,
+        marker_id,
+        dictionary_name="DICT_4X4_50",
+    ):
+        if not hasattr(cv2, "aruco"):
+            return None
+
+        frame_h, frame_w = frame_gray.shape[:2]
+        x, y, w, h = self._clip_rect(
+            roi,
+            frame_w,
+            frame_h,
+        )
+        crop = frame_gray[y:y + h, x:x + w]
+        dictionary = self._aruco_dictionary(
+            dictionary_name
+        )
+
+        if hasattr(cv2.aruco, "ArucoDetector"):
+            detector = cv2.aruco.ArucoDetector(
+                dictionary,
+                cv2.aruco.DetectorParameters(),
+            )
+            corners, ids, _ = detector.detectMarkers(
+                crop
+            )
+        else:
+            corners, ids, _ = cv2.aruco.detectMarkers(
+                crop,
+                dictionary,
+            )
+
+        if ids is None:
+            return None
+
+        for corner, detected_id in zip(
+            corners,
+            ids.flatten(),
+        ):
+            if int(detected_id) != int(marker_id):
+                continue
+
+            points = corner.reshape(-1, 2).astype(
+                np.float32
+            )
+            points[:, 0] += x
+            points[:, 1] += y
+
+            min_x = float(points[:, 0].min())
+            min_y = float(points[:, 1].min())
+            max_x = float(points[:, 0].max())
+            max_y = float(points[:, 1].max())
+
+            center_x = float(points[:, 0].mean())
+            center_y = float(points[:, 1].mean())
+
+            edge_lengths = [
+                float(
+                    np.linalg.norm(
+                        points[(index + 1) % 4]
+                        - points[index]
+                    )
+                )
+                for index in range(4)
+            ]
+
+            return {
+                "score": 1.0,
+                "x": int(round(min_x)),
+                "y": int(round(min_y)),
+                "center_x": center_x,
+                "center_y": center_y,
+                "w": int(round(max_x - min_x)),
+                "h": int(round(max_y - min_y)),
+                "marker_id": int(detected_id),
+                "marker_size_px": round(
+                    sum(edge_lengths) / 4.0,
+                    2,
+                ),
+            }
+
+        return None
+
     def _in_target(self, detection, target):
         x1 = int(target["x"])
         y1 = int(target["y"])
@@ -165,6 +265,9 @@ class VisionSelector:
         bed_template_path,
         bed_roi,
         bed_target,
+        bed_locator_mode="aruco",
+        aruco_id=23,
+        aruco_dictionary="DICT_4X4_50",
         head_match_threshold=0.78,
         bed_match_threshold=0.78,
         stable_px=8,
@@ -176,14 +279,25 @@ class VisionSelector:
         head_template = self._load_template(
             head_template_path
         )
-        bed_template = self._load_template(
-            bed_template_path
+        bed_locator_mode = (
+            str(bed_locator_mode).strip().lower()
         )
+        if bed_locator_mode not in {"aruco", "template"}:
+            bed_locator_mode = "aruco"
+
+        bed_template = None
+        if bed_locator_mode == "template":
+            bed_template = self._load_template(
+                bed_template_path
+            )
 
         if head_template is None:
             return None, "喷头模板未配置"
 
-        if bed_template is None:
+        if (
+            bed_locator_mode == "template"
+            and bed_template is None
+        ):
             return None, "热床锚点模板未配置"
 
         if not history:
@@ -211,17 +325,30 @@ class VisionSelector:
                 head_template,
                 head_roi,
             )
-            bed = self._detect(
-                frame_gray,
-                bed_template,
-                bed_roi,
-            )
+            if bed_locator_mode == "aruco":
+                bed = self._detect_aruco(
+                    frame_gray,
+                    bed_roi,
+                    aruco_id,
+                    aruco_dictionary,
+                )
+            else:
+                bed = self._detect(
+                    frame_gray,
+                    bed_template,
+                    bed_roi,
+                )
 
             valid = (
                 head is not None
                 and bed is not None
                 and head["score"] >= float(head_match_threshold)
-                and bed["score"] >= float(bed_match_threshold)
+                and (
+                    bed_locator_mode == "aruco"
+                    or bed["score"] >= float(
+                        bed_match_threshold
+                    )
+                )
                 and self._in_target(head, head_target)
                 and self._in_target(bed, bed_target)
             )
@@ -342,6 +469,12 @@ class VisionSelector:
             "bed_score": round(
                 best["bed"]["score"],
                 4,
+            ),
+            "bed_locator_mode": bed_locator_mode,
+            "aruco_id": (
+                best["bed"].get("marker_id")
+                if bed_locator_mode == "aruco"
+                else None
             ),
             "final_score": round(
                 final_score,
