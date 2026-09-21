@@ -62,6 +62,9 @@ class Database:
                     frame_offset INTEGER,
                     rewind_ms INTEGER,
                     frame_before_trigger_ms INTEGER,
+                    selection_mode TEXT,
+                    vision_score REAL,
+                    vision_stable INTEGER,
                     error TEXT,
                     UNIQUE(job_id, layer)
                 );
@@ -110,6 +113,9 @@ class Database:
             self._ensure_column(conn, "snapshots", "frame_age_ms", "INTEGER")
             self._ensure_column(conn, "snapshots", "frame_offset", "INTEGER")
             self._ensure_column(conn, "snapshots", "rewind_ms", "INTEGER")
+            self._ensure_column(conn, "snapshots", "selection_mode", "TEXT")
+            self._ensure_column(conn, "snapshots", "vision_score", "REAL")
+            self._ensure_column(conn, "snapshots", "vision_stable", "INTEGER")
             self._ensure_column(
                 conn,
                 "snapshots",
@@ -385,6 +391,9 @@ class Database:
         frame_offset=None,
         rewind_ms=None,
         frame_before_trigger_ms=None,
+        selection_mode=None,
+        vision_score=None,
+        vision_stable=None,
     ):
         now = datetime.now(timezone.utc).isoformat()
 
@@ -409,9 +418,12 @@ class Database:
                     frame_offset,
                     rewind_ms,
                     frame_before_trigger_ms,
+                    selection_mode,
+                    vision_score,
+                    vision_stable,
                     error
                 )
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     job_id,
@@ -425,6 +437,13 @@ class Database:
                     frame_offset,
                     rewind_ms,
                     frame_before_trigger_ms,
+                    selection_mode,
+                    vision_score,
+                    (
+                        None
+                        if vision_stable is None
+                        else int(bool(vision_stable))
+                    ),
                     error,
                 ),
             )
