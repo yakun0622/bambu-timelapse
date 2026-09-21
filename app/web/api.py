@@ -29,6 +29,13 @@ class CaptureTimingRequest(BaseModel):
     milliseconds: int
 
 
+class DebugCaptureRequest(BaseModel):
+    enabled: bool
+    start_ms: int
+    end_ms: int
+    interval_ms: int
+
+
 def _session_cookie(request: Request):
     return request.cookies.get(auth_service.COOKIE_NAME)
 
@@ -314,6 +321,27 @@ def frame(job_id: int, filename: str):
     return FileResponse(path)
 
 
+@router.get("/jobs/{job_id}/debug-frames/{debug_id}")
+def debug_frame(job_id: int, debug_id: int):
+    value = db.get_debug_snapshot(debug_id)
+
+    if not value or value["job_id"] != job_id:
+        raise HTTPException(
+            status_code=404,
+            detail="调试图片不存在",
+        )
+
+    path = Path(value["file_path"])
+
+    if not path.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail="调试图片文件不存在",
+        )
+
+    return FileResponse(path)
+
+
 @router.get("/jobs/{job_id}/video")
 def video(job_id: int):
     job_data = db.get_job(job_id)
@@ -415,9 +443,75 @@ def update_capture_timing(payload: CaptureTimingRequest):
     }
 
 
+def _debug_capture_settings():
+    values = db.get_app_settings(
+        (
+            "debug_capture_enabled",
+            "debug_capture_start_ms",
+            "debug_capture_end_ms",
+            "debug_capture_interval_ms",
+        )
+    )
+
+    return {
+        "enabled": values.get(
+            "debug_capture_enabled",
+            "false",
+        ).lower() in {"1", "true", "yes", "on"},
+        "start_ms": max(
+            0,
+            int(values.get("debug_capture_start_ms", "3000")),
+        ),
+        "end_ms": max(
+            0,
+            int(values.get("debug_capture_end_ms", "0")),
+        ),
+        "interval_ms": max(
+            50,
+            int(values.get("debug_capture_interval_ms", "500")),
+        ),
+    }
+
+
+@router.put("/settings/debug-capture")
+def update_debug_capture(payload: DebugCaptureRequest):
+    if payload.start_ms < 0 or payload.start_ms > 30000:
+        raise HTTPException(
+            status_code=400,
+            detail="调试开始时间必须在 0 到 30000 ms 之间",
+        )
+
+    if payload.end_ms < 0 or payload.end_ms > 30000:
+        raise HTTPException(
+            status_code=400,
+            detail="调试结束时间必须在 0 到 30000 ms 之间",
+        )
+
+    if payload.interval_ms < 50 or payload.interval_ms > 5000:
+        raise HTTPException(
+            status_code=400,
+            detail="调试采样间隔必须在 50 到 5000 ms 之间",
+        )
+
+    db.set_app_settings(
+        {
+            "debug_capture_enabled": "true" if payload.enabled else "false",
+            "debug_capture_start_ms": payload.start_ms,
+            "debug_capture_end_ms": payload.end_ms,
+            "debug_capture_interval_ms": payload.interval_ms,
+        }
+    )
+
+    return {
+        "ok": True,
+        "debug_capture": _debug_capture_settings(),
+    }
+
+
 @router.get("/settings")
 def get_settings():
     capture_timing = _capture_timing_settings()
+    debug_capture = _debug_capture_settings()
 
     return {
         "bambu": {
@@ -447,6 +541,7 @@ def get_settings():
             "capture_rewind_mode": capture_timing["mode"],
             "capture_rewind_frames": capture_timing["frames"],
             "capture_rewind_ms": capture_timing["milliseconds"],
+            "debug_capture": debug_capture,
         },
         "video": {
             "auto_generate_video": settings.auto_generate_video,
