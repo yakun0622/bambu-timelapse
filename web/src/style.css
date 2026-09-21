@@ -1702,3 +1702,199 @@ dd { margin: 0; color: #d9dde2; overflow-wrap: anywhere; }
     width: 100%;
   }
 }
+
+
+.job-action-row {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  margin-top: 18px;
+}
+
+.preview-note {
+  color: #77818c;
+  font-size: 11px;
+}
+
+.timelapse-preview-card {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid #20272f;
+  border-radius: 16px;
+  background: #0c1014;
+}
+
+.timelapse-preview-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.timelapse-preview-head small {
+  display: block;
+  margin-bottom: 5px;
+  color: #69717b;
+  font-size: 10px;
+}
+
+.timelapse-preview-head strong {
+  display: block;
+  color: #e8edf2;
+  font-size: 14px;
+}
+
+.preview-status {
+  padding: 4px 8px;
+  border: 1px solid #27303a;
+  border-radius: 999px;
+  color: #818b96;
+  font-size: 10px;
+}
+
+.timelapse-preview-stage {
+  overflow: hidden;
+  margin-top: 14px;
+  border: 1px solid #20272f;
+  border-radius: 14px;
+  aspect-ratio: 16 / 10;
+  background: #07090b;
+}
+
+.timelapse-preview-stage img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.timelapse-preview-progress {
+  height: 4px;
+  overflow: hidden;
+  margin-top: 12px;
+  border-radius: 999px;
+  background: #1c232a;
+}
+
+.timelapse-preview-progress i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #dce2e8;
+  transition: width .12s linear;
+}
+
+.timelapse-preview-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.preview-main-controls,
+.preview-options {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.preview-icon-button,
+.preview-play-button {
+  min-width: 76px;
+}
+
+.preview-options label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #78838e;
+  font-size: 11px;
+}
+
+.preview-options input[type="number"] {
+  width: 68px;
+  height: 36px;
+  padding: 0 8px;
+  border: 1px solid #28313a;
+  border-radius: 8px;
+  outline: none;
+  background: #090d11;
+  color: #e7ebef;
+}
+
+.preview-options em {
+  color: #68727d;
+  font-style: normal;
+}
+
+.preview-loop-option input {
+  accent-color: #dce2e8;
+}
+
+.preview-help {
+  margin: 12px 0 0;
+  color: #65707b;
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.frame-grid img {
+  cursor: pointer;
+}
+
+:root[data-theme="light"] .timelapse-preview-card {
+  border-color: #dde3e8;
+  background: #f7f9fa;
+}
+
+:root[data-theme="light"] .timelapse-preview-head strong {
+  color: #20262d;
+}
+
+:root[data-theme="light"] .preview-status {
+  border-color: #d7dde3;
+  color: #68727d;
+}
+
+:root[data-theme="light"] .timelapse-preview-stage {
+  border-color: #dce2e7;
+  background: #eef1f4;
+}
+
+:root[data-theme="light"] .timelapse-preview-progress {
+  background: #e1e6ea;
+}
+
+:root[data-theme="light"] .timelapse-preview-progress i {
+  background: #303840;
+}
+
+:root[data-theme="light"] .preview-options input[type="number"] {
+  border-color: #d5dce2;
+  background: #ffffff;
+  color: #20262d;
+}
+
+@media (max-width: 900px) {
+  .timelapse-preview-controls {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 620px) {
+  .preview-main-controls,
+  .preview-options {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .preview-main-controls .button {
+    flex: 1;
+  }
+
+  .preview-loop-option {
+    width: 100%;
+  }
+}
