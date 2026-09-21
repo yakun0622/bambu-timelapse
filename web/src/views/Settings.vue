@@ -547,8 +547,8 @@ onMounted(loadSettings);
               >
                 <label>视觉定位</label>
                 <small>
-                  从 RTSP 历史帧中识别喷头位置，并优先选择进入目标停靠区且连续稳定的画面。
-                  如果没有找到符合条件的画面，会自动回退到“按时间”策略，
+                  从 RTSP 历史帧中同时识别喷头和热床锚点，只有两者都进入目标区域并连续稳定才会选中。
+                  可按热床锚点自动平移对齐画面；如果没有找到符合条件的画面，会自动回退到“按时间”策略，
                   使用 {{ captureTiming.milliseconds }} ms。
                 </small>
               </div>
@@ -875,7 +875,7 @@ onMounted(loadSettings);
               <div>
                 <strong>画面标定</strong>
                 <small>
-                  直接在最近抓拍上拖框设置搜索区域、停靠区域和喷头模板。
+                  直接在最近抓拍上拖框设置喷头/热床搜索区域、目标区域和两个识别模板。
                 </small>
               </div>
 
