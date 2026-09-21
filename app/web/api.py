@@ -52,6 +52,7 @@ class VisionCaptureRequest(BaseModel):
 
 
 class VisionTemplateRequest(BaseModel):
+    snapshot_id: int
     x: int
     y: int
     w: int
@@ -719,12 +720,12 @@ def vision_template():
 def update_vision_template(payload: VisionTemplateRequest):
     from PIL import Image
 
-    latest = db.get_latest_snapshot()
+    latest = db.get_snapshot(payload.snapshot_id)
 
     if not latest or not latest.get("file_path"):
         raise HTTPException(
             status_code=404,
-            detail="暂无可用于生成模板的抓拍图片",
+            detail="用于生成模板的抓拍图片不存在",
         )
 
     source = Path(latest["file_path"])
