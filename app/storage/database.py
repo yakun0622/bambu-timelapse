@@ -211,6 +211,14 @@ class Database:
                 ),
             )
 
+    def get_debug_snapshot(self, debug_id):
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM debug_snapshots WHERE id=?",
+                (debug_id,),
+            ).fetchone()
+            return dict(row) if row else None
+
     def list_debug_snapshots(self, job_id):
         with self.connect() as conn:
             rows = conn.execute(
