@@ -278,7 +278,6 @@ CAPTURE_SOURCE=auto
 YI_RTSP_PORT=554
 YI_RTSP_PATH=/ch0_0.h264
 YI_RTSP_URL=
-RTSP_CAPTURE_TIMEOUT=4
 RTSP_FRAME_RATE=5
 RTSP_FRAME_MAX_AGE=1.0
 RTSP_HISTORY_FRAMES=60
@@ -287,7 +286,6 @@ CAPTURE_REWIND_FRAMES=5
 CAPTURE_REWIND_MS=1000
 
 AUTO_CAPTURE=true
-SNAPSHOT_DELAY=0.1
 SNAPSHOT_RETRIES=3
 CAPTURE_EVERY_LAYERS=1
 
@@ -316,7 +314,6 @@ Main options:
 | `YI_RTSP_PORT` | RTSP server port, default `554` |
 | `YI_RTSP_PATH` | RTSP stream path, default `/ch0_0.h264` |
 | `YI_RTSP_URL` | Optional full RTSP URL override for non-standard setups |
-| `RTSP_CAPTURE_TIMEOUT` | RTSP timeout used by compatibility/fallback logic |
 | `RTSP_FRAME_RATE` | Number of JPEG frames per second kept by the persistent RTSP buffer |
 | `RTSP_FRAME_MAX_AGE` | Maximum acceptable age of the newest buffered frame |
 | `RTSP_HISTORY_FRAMES` | Number of recent RTSP frames retained in memory |
@@ -324,7 +321,6 @@ Main options:
 | `CAPTURE_REWIND_FRAMES` | Default number of RTSP frames to move backward in frame mode |
 | `CAPTURE_REWIND_MS` | Default milliseconds before the layer-change notification in time mode |
 | `AUTO_CAPTURE` | Enable automatic layer snapshots |
-| `SNAPSHOT_DELAY` | Delay before taking a snapshot |
 | `SNAPSHOT_RETRIES` | Number of snapshot retries |
 | `CAPTURE_EVERY_LAYERS` | Capture every N layers |
 | `AUTO_GENERATE_VIDEO` | Generate MP4 automatically after completion |
