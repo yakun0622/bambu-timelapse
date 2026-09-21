@@ -39,8 +39,12 @@ class DebugCaptureRequest(BaseModel):
 class VisionCaptureRequest(BaseModel):
     lookback_ms: int
     match_threshold: float
+    bed_match_threshold: float
     stable_px: int
+    bed_stable_px: int
     stable_frames: int
+    align_enabled: bool
+    align_max_shift_px: int
     roi_x: int
     roi_y: int
     roi_w: int
@@ -49,6 +53,14 @@ class VisionCaptureRequest(BaseModel):
     target_y: int
     target_w: int
     target_h: int
+    bed_roi_x: int
+    bed_roi_y: int
+    bed_roi_w: int
+    bed_roi_h: int
+    bed_target_x: int
+    bed_target_y: int
+    bed_target_w: int
+    bed_target_h: int
 
 
 class VisionTemplateRequest(BaseModel):
@@ -536,8 +548,12 @@ def _vision_capture_settings():
         (
             "vision_lookback_ms",
             "vision_match_threshold",
+            "vision_bed_match_threshold",
             "vision_stable_px",
+            "vision_bed_stable_px",
             "vision_stable_frames",
+            "vision_align_enabled",
+            "vision_align_max_shift_px",
             "vision_roi_x",
             "vision_roi_y",
             "vision_roi_w",
@@ -546,6 +562,14 @@ def _vision_capture_settings():
             "vision_target_y",
             "vision_target_w",
             "vision_target_h",
+            "vision_bed_roi_x",
+            "vision_bed_roi_y",
+            "vision_bed_roi_w",
+            "vision_bed_roi_h",
+            "vision_bed_target_x",
+            "vision_bed_target_y",
+            "vision_bed_target_w",
+            "vision_bed_target_h",
         )
     )
 
@@ -561,13 +585,32 @@ def _vision_capture_settings():
                 float(values.get("vision_match_threshold", "0.78")),
             ),
         ),
+        "bed_match_threshold": min(
+            1.0,
+            max(
+                0.0,
+                float(values.get("vision_bed_match_threshold", "0.78")),
+            ),
+        ),
         "stable_px": max(
             0,
             int(values.get("vision_stable_px", "8")),
         ),
+        "bed_stable_px": max(
+            0,
+            int(values.get("vision_bed_stable_px", "8")),
+        ),
         "stable_frames": max(
             1,
             int(values.get("vision_stable_frames", "2")),
+        ),
+        "align_enabled": values.get(
+            "vision_align_enabled",
+            "true",
+        ).lower() in {"1", "true", "yes", "on"},
+        "align_max_shift_px": max(
+            0,
+            int(values.get("vision_align_max_shift_px", "30")),
         ),
         "roi": {
             "x": max(0, int(values.get("vision_roi_x", "700"))),
@@ -578,8 +621,20 @@ def _vision_capture_settings():
         "target": {
             "x": max(0, int(values.get("vision_target_x", "760"))),
             "y": max(0, int(values.get("vision_target_y", "20"))),
-            "w": max(1, int(values.get("vision_target_w", "450"))),
-            "h": max(1, int(values.get("vision_target_h", "180"))),
+            "w": max(1, int(values.get("vision_target_w", "180"))),
+            "h": max(1, int(values.get("vision_target_h", "100"))),
+        },
+        "bed_roi": {
+            "x": max(0, int(values.get("vision_bed_roi_x", "0"))),
+            "y": max(0, int(values.get("vision_bed_roi_y", "250"))),
+            "w": max(1, int(values.get("vision_bed_roi_w", "1280"))),
+            "h": max(1, int(values.get("vision_bed_roi_h", "470"))),
+        },
+        "bed_target": {
+            "x": max(0, int(values.get("vision_bed_target_x", "0"))),
+            "y": max(0, int(values.get("vision_bed_target_y", "250"))),
+            "w": max(1, int(values.get("vision_bed_target_w", "1280"))),
+            "h": max(1, int(values.get("vision_bed_target_h", "470"))),
         },
     }
 
@@ -592,22 +647,40 @@ def update_vision_capture(payload: VisionCaptureRequest):
             detail="视觉搜索历史范围必须在 500 到 30000 ms 之间",
         )
 
-    if payload.match_threshold < 0 or payload.match_threshold > 1:
+    if not 0 <= payload.match_threshold <= 1:
         raise HTTPException(
             status_code=400,
-            detail="模板匹配阈值必须在 0 到 1 之间",
+            detail="喷头模板匹配阈值必须在 0 到 1 之间",
         )
 
-    if payload.stable_px < 0 or payload.stable_px > 200:
+    if not 0 <= payload.bed_match_threshold <= 1:
         raise HTTPException(
             status_code=400,
-            detail="稳定允许位移必须在 0 到 200 px 之间",
+            detail="热床模板匹配阈值必须在 0 到 1 之间",
         )
 
-    if payload.stable_frames < 1 or payload.stable_frames > 20:
+    if not 0 <= payload.stable_px <= 200:
+        raise HTTPException(
+            status_code=400,
+            detail="喷头稳定允许位移必须在 0 到 200 px 之间",
+        )
+
+    if not 0 <= payload.bed_stable_px <= 200:
+        raise HTTPException(
+            status_code=400,
+            detail="热床稳定允许位移必须在 0 到 200 px 之间",
+        )
+
+    if not 1 <= payload.stable_frames <= 20:
         raise HTTPException(
             status_code=400,
             detail="连续稳定帧数必须在 1 到 20 之间",
+        )
+
+    if not 0 <= payload.align_max_shift_px <= 300:
+        raise HTTPException(
+            status_code=400,
+            detail="最大画面对齐位移必须在 0 到 300 px 之间",
         )
 
     rect_values = (
@@ -619,31 +692,51 @@ def update_vision_capture(payload: VisionCaptureRequest):
         payload.target_y,
         payload.target_w,
         payload.target_h,
+        payload.bed_roi_x,
+        payload.bed_roi_y,
+        payload.bed_roi_w,
+        payload.bed_roi_h,
+        payload.bed_target_x,
+        payload.bed_target_y,
+        payload.bed_target_w,
+        payload.bed_target_h,
     )
 
     if any(value < 0 for value in rect_values):
         raise HTTPException(
             status_code=400,
-            detail="ROI 和目标区域参数不能为负数",
+            detail="视觉区域参数不能为负数",
         )
 
-    if min(
+    size_values = (
         payload.roi_w,
         payload.roi_h,
         payload.target_w,
         payload.target_h,
-    ) < 1:
+        payload.bed_roi_w,
+        payload.bed_roi_h,
+        payload.bed_target_w,
+        payload.bed_target_h,
+    )
+
+    if min(size_values) < 1:
         raise HTTPException(
             status_code=400,
-            detail="ROI 和目标区域宽高必须大于 0",
+            detail="视觉区域宽高必须大于 0",
         )
 
     db.set_app_settings(
         {
             "vision_lookback_ms": payload.lookback_ms,
             "vision_match_threshold": payload.match_threshold,
+            "vision_bed_match_threshold": payload.bed_match_threshold,
             "vision_stable_px": payload.stable_px,
+            "vision_bed_stable_px": payload.bed_stable_px,
             "vision_stable_frames": payload.stable_frames,
+            "vision_align_enabled": (
+                "true" if payload.align_enabled else "false"
+            ),
+            "vision_align_max_shift_px": payload.align_max_shift_px,
             "vision_roi_x": payload.roi_x,
             "vision_roi_y": payload.roi_y,
             "vision_roi_w": payload.roi_w,
@@ -652,6 +745,14 @@ def update_vision_capture(payload: VisionCaptureRequest):
             "vision_target_y": payload.target_y,
             "vision_target_w": payload.target_w,
             "vision_target_h": payload.target_h,
+            "vision_bed_roi_x": payload.bed_roi_x,
+            "vision_bed_roi_y": payload.bed_roi_y,
+            "vision_bed_roi_w": payload.bed_roi_w,
+            "vision_bed_roi_h": payload.bed_roi_h,
+            "vision_bed_target_x": payload.bed_target_x,
+            "vision_bed_target_y": payload.bed_target_y,
+            "vision_bed_target_w": payload.bed_target_w,
+            "vision_bed_target_h": payload.bed_target_h,
         }
     )
 
@@ -659,7 +760,6 @@ def update_vision_capture(payload: VisionCaptureRequest):
         "ok": True,
         "vision_capture": _vision_capture_settings(),
     }
-
 
 def _vision_template_path():
     value = db.get_app_setting("vision_template_path")
@@ -671,6 +771,19 @@ def _vision_template_path():
         settings.database_path.parent
         / "vision"
         / "head-template.jpg"
+    )
+
+
+def _vision_bed_template_path():
+    value = db.get_app_setting("vision_bed_template_path")
+
+    if value:
+        return Path(value)
+
+    return (
+        settings.database_path.parent
+        / "vision"
+        / "bed-template.jpg"
     )
 
 
@@ -784,6 +897,87 @@ def update_vision_template(payload: VisionTemplateRequest):
     }
 
 
+@router.get("/settings/vision-bed-template")
+def vision_bed_template():
+    path = _vision_bed_template_path()
+
+    if not path.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail="尚未生成热床锚点模板",
+        )
+
+    return FileResponse(path)
+
+
+@router.post("/settings/vision-bed-template")
+def update_vision_bed_template(payload: VisionTemplateRequest):
+    from PIL import Image
+
+    latest = db.get_snapshot(payload.snapshot_id)
+
+    if not latest or not latest.get("file_path"):
+        raise HTTPException(
+            status_code=404,
+            detail="用于生成热床模板的抓拍图片不存在",
+        )
+
+    source = Path(latest["file_path"])
+
+    if not source.is_file():
+        raise HTTPException(
+            status_code=404,
+            detail="源抓拍图片不存在",
+        )
+
+    if min(payload.w, payload.h) < 8:
+        raise HTTPException(
+            status_code=400,
+            detail="热床模板区域太小",
+        )
+
+    with Image.open(source) as image:
+        width, height = image.size
+
+        x = max(0, min(payload.x, width - 1))
+        y = max(0, min(payload.y, height - 1))
+        w = max(1, min(payload.w, width - x))
+        h = max(1, min(payload.h, height - y))
+
+        target = _vision_bed_template_path()
+        target.parent.mkdir(parents=True, exist_ok=True)
+
+        image.crop(
+            (x, y, x + w, y + h)
+        ).convert("RGB").save(
+            target,
+            "JPEG",
+            quality=95,
+        )
+
+    db.set_app_settings(
+        {
+            "vision_bed_template_path": str(target),
+            "vision_bed_template_x": x,
+            "vision_bed_template_y": y,
+            "vision_bed_template_w": w,
+            "vision_bed_template_h": h,
+        }
+    )
+
+    return {
+        "ok": True,
+        "template": {
+            "configured": True,
+            "x": x,
+            "y": y,
+            "w": w,
+            "h": h,
+            "url": "/api/settings/vision-bed-template",
+        },
+    }
+
+
 @router.get("/settings")
 def get_settings():
     capture_timing = _capture_timing_settings()
@@ -795,9 +989,14 @@ def get_settings():
             "vision_template_y",
             "vision_template_w",
             "vision_template_h",
+            "vision_bed_template_x",
+            "vision_bed_template_y",
+            "vision_bed_template_w",
+            "vision_bed_template_h",
         )
     )
     template_path = _vision_template_path()
+    bed_template_path = _vision_bed_template_path()
 
     return {
         "bambu": {
@@ -839,6 +1038,18 @@ def get_settings():
                     "url": (
                         "/api/settings/vision-template"
                         if template_path.is_file()
+                        else None
+                    ),
+                },
+                "bed_template": {
+                    "configured": bed_template_path.is_file(),
+                    "x": int(template_values.get("vision_bed_template_x", "0")),
+                    "y": int(template_values.get("vision_bed_template_y", "0")),
+                    "w": int(template_values.get("vision_bed_template_w", "0")),
+                    "h": int(template_values.get("vision_bed_template_h", "0")),
+                    "url": (
+                        "/api/settings/vision-bed-template"
+                        if bed_template_path.is_file()
                         else None
                     ),
                 },
