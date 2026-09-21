@@ -76,15 +76,8 @@ class CaptureService:
                 {
                     "job_id": job_id,
                     "layer": layer,
-                    "delay_ms": int(
-                        settings.snapshot_delay
-                        * 1000
-                    ),
                 },
             )
-
-            if settings.snapshot_delay > 0:
-                time.sleep(settings.snapshot_delay)
 
             runtime = db.get_app_settings(
                 (
