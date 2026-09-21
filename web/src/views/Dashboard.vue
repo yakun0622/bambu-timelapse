@@ -239,7 +239,9 @@ function eventMessage(event) {
         ? ` · 帧龄 ${d.frame_age_ms} ms`
         : "";
       const rewind = d.selection_mode === "vision"
-        ? ` · 喷头 ${d.vision_score ?? "—"} · 热床 ${d.bed_score ?? "—"} · 稳定${d.align_dx || d.align_dy ? ` · 对齐(${d.align_dx ?? 0}, ${d.align_dy ?? 0})px` : ""}`
+        ? d.bed_locator_mode === "aruco"
+          ? ` · 喷头 ${d.vision_score ?? "—"} · ArUco#${d.aruco_id ?? "—"} · 稳定${d.align_dx || d.align_dy ? ` · 对齐(${d.align_dx ?? 0}, ${d.align_dy ?? 0})px` : ""}`
+          : ` · 喷头 ${d.vision_score ?? "—"} · 热床 ${d.bed_score ?? "—"} · 稳定${d.align_dx || d.align_dy ? ` · 对齐(${d.align_dx ?? 0}, ${d.align_dy ?? 0})px` : ""}`
         : d.selection_mode === "vision-fallback"
           ? ` · 视觉未命中 → 回退 ${d.rewind_ms ?? "—"} ms`
           : d.rewind_mode === "frame"
@@ -584,8 +586,13 @@ onBeforeUnmount(() => {
                 >
                   视觉定位 · 喷头
                   {{ data.latest_snapshot.vision_score ?? "—" }}
-                  · 热床
-                  {{ data.latest_snapshot.bed_score ?? "—" }}
+                  ·
+                  <template v-if="data.latest_snapshot.bed_locator_mode === 'aruco'">
+                    ArUco #{{ data.latest_snapshot.aruco_id ?? "—" }}
+                  </template>
+                  <template v-else>
+                    热床 {{ data.latest_snapshot.bed_score ?? "—" }}
+                  </template>
                   · {{
                     data.latest_snapshot.vision_stable
                       && data.latest_snapshot.bed_stable
