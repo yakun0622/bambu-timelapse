@@ -24,6 +24,9 @@ const visionCapture = ref({
   lookback_ms: 6000,
   match_threshold: 0.78,
   bed_match_threshold: 0.78,
+  bed_locator_mode: "aruco",
+  aruco_id: 23,
+  aruco_dictionary: "DICT_4X4_50",
   stable_px: 8,
   bed_stable_px: 8,
   stable_frames: 2,
@@ -288,6 +291,9 @@ async function saveVisionCapture() {
       lookback_ms: visionCapture.value.lookback_ms,
       match_threshold: visionCapture.value.match_threshold,
       bed_match_threshold: visionCapture.value.bed_match_threshold,
+      bed_locator_mode: visionCapture.value.bed_locator_mode,
+      aruco_id: visionCapture.value.aruco_id,
+      aruco_dictionary: visionCapture.value.aruco_dictionary,
       stable_px: visionCapture.value.stable_px,
       bed_stable_px: visionCapture.value.bed_stable_px,
       stable_frames: visionCapture.value.stable_frames,
@@ -710,6 +716,42 @@ onMounted(loadSettings);
             </label>
 
             <label>
+              <span>热床定位方式</span>
+              <select
+                v-model="visionCapture.bed_locator_mode"
+                class="vision-select"
+              >
+                <option value="aruco">ArUco 标记</option>
+                <option value="template">模板匹配</option>
+              </select>
+            </label>
+
+            <label v-if="visionCapture.bed_locator_mode === 'aruco'">
+              <span>ArUco Marker ID</span>
+              <div class="capture-number-field">
+                <input
+                  v-model.number="visionCapture.aruco_id"
+                  type="number"
+                  min="0"
+                  max="999"
+                  step="1"
+                />
+              </div>
+            </label>
+
+            <label v-if="visionCapture.bed_locator_mode === 'aruco'">
+              <span>ArUco 字典</span>
+              <select
+                v-model="visionCapture.aruco_dictionary"
+                class="vision-select"
+              >
+                <option value="DICT_4X4_50">DICT_4X4_50</option>
+                <option value="DICT_4X4_100">DICT_4X4_100</option>
+                <option value="DICT_5X5_50">DICT_5X5_50</option>
+              </select>
+            </label>
+
+            <label v-if="visionCapture.bed_locator_mode === 'template'">
               <span>热床匹配阈值</span>
               <div class="capture-number-field">
                 <input
@@ -844,8 +886,10 @@ onMounted(loadSettings);
 
           <div class="vision-region-block">
             <div>
-              <strong>热床搜索 ROI</strong>
-              <small>只在这个区域内寻找随热床移动的固定锚点。</small>
+              <strong>热床定位搜索 ROI</strong>
+              <small>
+                ArUco 模式下只在这里寻找 Marker；模板模式下寻找热床锚点。
+              </small>
             </div>
 
             <div class="vision-region-grid">
@@ -859,7 +903,9 @@ onMounted(loadSettings);
           <div class="vision-region-block">
             <div>
               <strong>热床目标区域</strong>
-              <small>热床锚点进入该区域后，才允许成为候选延时帧。</small>
+              <small>
+                Marker/热床锚点中心进入该区域后，才允许成为候选延时帧。
+              </small>
             </div>
 
             <div class="vision-region-grid">
@@ -875,7 +921,7 @@ onMounted(loadSettings);
               <div>
                 <strong>画面标定</strong>
                 <small>
-                  直接在最近抓拍上拖框设置喷头/热床搜索区域、目标区域和两个识别模板。
+                  直接拖框设置喷头与热床定位区域。ArUco 模式无需生成热床模板，只需让 ID 23 标记进入热床 ROI。
                 </small>
               </div>
 
@@ -941,6 +987,7 @@ onMounted(loadSettings);
               </div>
 
               <div
+                v-if="visionCapture.bed_locator_mode === 'template'"
                 class="vision-box bed-template"
                 :style="boxStyle(bedTemplateBox)"
               >
@@ -1010,6 +1057,7 @@ onMounted(loadSettings);
               </button>
 
               <button
+                v-if="visionCapture.bed_locator_mode === 'template'"
                 type="button"
                 class="button secondary-button"
                 :class="{ active: drawMode === 'bed_template' }"
@@ -1048,7 +1096,10 @@ onMounted(loadSettings);
               />
             </div>
 
-            <div class="vision-calibration-tools">
+            <div
+              v-if="visionCapture.bed_locator_mode === 'template'"
+              class="vision-calibration-tools"
+            >
               <button
                 type="button"
                 class="button"
@@ -1060,7 +1111,21 @@ onMounted(loadSettings);
             </div>
 
             <div
-              v-if="settings.capture.vision_capture.bed_template?.configured"
+              v-else
+              class="aruco-hint"
+            >
+              <strong>ArUco 热床定位已启用</strong>
+              <span>
+                当前使用 {{ visionCapture.aruco_dictionary }} /
+                ID {{ visionCapture.aruco_id }}。把打印好的 Marker 固定在随热床移动且长期可见的位置即可。
+              </span>
+            </div>
+
+            <div
+              v-if="
+                visionCapture.bed_locator_mode === 'template'
+                && settings.capture.vision_capture.bed_template?.configured
+              "
               class="vision-template-preview"
             >
               <div>
