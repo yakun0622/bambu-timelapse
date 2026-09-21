@@ -3,6 +3,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        USE_CN_MIRROR: ${USE_CN_MIRROR:-true}
     container_name: bambu-timelapse
     restart: unless-stopped
     init: true
