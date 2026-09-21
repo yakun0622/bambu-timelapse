@@ -444,6 +444,14 @@ class Database:
                     (job_id,),
                 )
 
+    def get_snapshot(self, snapshot_id):
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM snapshots WHERE id=?",
+                (snapshot_id,),
+            ).fetchone()
+            return dict(row) if row else None
+
     def get_latest_snapshot(self, job_id=None):
         with self.connect() as conn:
             if job_id is not None:
