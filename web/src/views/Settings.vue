@@ -397,7 +397,7 @@ onMounted(loadSettings);
           <dt>历史帧缓存</dt>
           <dd>{{ settings.capture.rtsp_history_frames }} 帧</dd>
 
-          <dt class="capture-config-label">自动抓拍回溯</dt>
+          <dt class="capture-config-label">抓拍定位方式</dt>
           <dd class="capture-config-cell">
             <div class="capture-config-panel">
               <div class="capture-mode-switch">
@@ -415,6 +415,14 @@ onMounted(loadSettings);
                   @click="captureTiming.mode = 'time'"
                 >
                   按时间回退
+                </button>
+
+                <button
+                  type="button"
+                  :class="{ active: captureTiming.mode === 'vision' }"
+                  @click="captureTiming.mode = 'vision'"
+                >
+                  视觉定位
                 </button>
               </div>
 
@@ -447,7 +455,7 @@ onMounted(loadSettings);
               </div>
 
               <div
-                v-else
+                v-else-if="captureTiming.mode === 'time'"
                 class="capture-config-input"
               >
                 <label>回退时间</label>
@@ -466,6 +474,18 @@ onMounted(loadSettings);
                 </small>
               </div>
 
+
+              <div
+                v-else
+                class="capture-config-input vision-mode-summary"
+              >
+                <label>视觉定位</label>
+                <small>
+                  从 RTSP 历史帧中识别喷头位置，并优先选择进入目标停靠区且连续稳定的画面。
+                  如果没有找到符合条件的画面，会自动回退到“按时间”策略，
+                  使用 {{ captureTiming.milliseconds }} ms。
+                </small>
+              </div>
               <div class="capture-config-actions">
                 <button
                   type="button"
