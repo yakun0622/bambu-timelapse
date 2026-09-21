@@ -39,6 +39,7 @@ const drawStart = ref(null);
 const draftBox = ref(null);
 const templateBox = ref({ x: 0, y: 0, w: 0, h: 0 });
 const templateVersion = ref(Date.now());
+const calibrationRenderVersion = ref(0);
 const savingTemplate = ref(false);
 
 async function loadSettings() {
@@ -111,6 +112,7 @@ function imagePoint(event) {
 }
 
 function boxStyle(box) {
+  calibrationRenderVersion.value;
   const image = calibrationImageRef.value;
   if (!image?.naturalWidth || !image?.naturalHeight || !box?.w || !box?.h) {
     return { display: "none" };
@@ -209,7 +211,10 @@ async function saveVisionTemplate() {
   try {
     await api("/api/settings/vision-template", {
       method: "POST",
-      body: JSON.stringify(templateBox.value)
+      body: JSON.stringify({
+        snapshot_id: calibrationImage.value.snapshot_id,
+        ...templateBox.value
+      })
     });
 
     templateVersion.value = Date.now();
@@ -731,6 +736,7 @@ onMounted(loadSettings);
                 :src="calibrationImage.url + '?v=' + calibrationImage.snapshot_id"
                 alt="视觉标定参考图"
                 draggable="false"
+                @load="calibrationRenderVersion++"
               />
 
               <div
