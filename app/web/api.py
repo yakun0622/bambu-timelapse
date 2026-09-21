@@ -36,6 +36,21 @@ class DebugCaptureRequest(BaseModel):
     interval_ms: int
 
 
+class VisionCaptureRequest(BaseModel):
+    lookback_ms: int
+    match_threshold: float
+    stable_px: int
+    stable_frames: int
+    roi_x: int
+    roi_y: int
+    roi_w: int
+    roi_h: int
+    target_x: int
+    target_y: int
+    target_w: int
+    target_h: int
+
+
 def _session_cookie(request: Request):
     return request.cookies.get(auth_service.COOKIE_NAME)
 
@@ -508,10 +523,141 @@ def update_debug_capture(payload: DebugCaptureRequest):
     }
 
 
+def _vision_capture_settings():
+    values = db.get_app_settings(
+        (
+            "vision_lookback_ms",
+            "vision_match_threshold",
+            "vision_stable_px",
+            "vision_stable_frames",
+            "vision_roi_x",
+            "vision_roi_y",
+            "vision_roi_w",
+            "vision_roi_h",
+            "vision_target_x",
+            "vision_target_y",
+            "vision_target_w",
+            "vision_target_h",
+        )
+    )
+
+    return {
+        "lookback_ms": max(
+            500,
+            int(values.get("vision_lookback_ms", "6000")),
+        ),
+        "match_threshold": min(
+            1.0,
+            max(
+                0.0,
+                float(values.get("vision_match_threshold", "0.78")),
+            ),
+        ),
+        "stable_px": max(
+            0,
+            int(values.get("vision_stable_px", "8")),
+        ),
+        "stable_frames": max(
+            1,
+            int(values.get("vision_stable_frames", "2")),
+        ),
+        "roi": {
+            "x": max(0, int(values.get("vision_roi_x", "700"))),
+            "y": max(0, int(values.get("vision_roi_y", "0"))),
+            "w": max(1, int(values.get("vision_roi_w", "580"))),
+            "h": max(1, int(values.get("vision_roi_h", "260"))),
+        },
+        "target": {
+            "x": max(0, int(values.get("vision_target_x", "760"))),
+            "y": max(0, int(values.get("vision_target_y", "20"))),
+            "w": max(1, int(values.get("vision_target_w", "450"))),
+            "h": max(1, int(values.get("vision_target_h", "180"))),
+        },
+    }
+
+
+@router.put("/settings/vision-capture")
+def update_vision_capture(payload: VisionCaptureRequest):
+    if payload.lookback_ms < 500 or payload.lookback_ms > 30000:
+        raise HTTPException(
+            status_code=400,
+            detail="视觉搜索历史范围必须在 500 到 30000 ms 之间",
+        )
+
+    if payload.match_threshold < 0 or payload.match_threshold > 1:
+        raise HTTPException(
+            status_code=400,
+            detail="模板匹配阈值必须在 0 到 1 之间",
+        )
+
+    if payload.stable_px < 0 or payload.stable_px > 200:
+        raise HTTPException(
+            status_code=400,
+            detail="稳定允许位移必须在 0 到 200 px 之间",
+        )
+
+    if payload.stable_frames < 1 or payload.stable_frames > 20:
+        raise HTTPException(
+            status_code=400,
+            detail="连续稳定帧数必须在 1 到 20 之间",
+        )
+
+    rect_values = (
+        payload.roi_x,
+        payload.roi_y,
+        payload.roi_w,
+        payload.roi_h,
+        payload.target_x,
+        payload.target_y,
+        payload.target_w,
+        payload.target_h,
+    )
+
+    if any(value < 0 for value in rect_values):
+        raise HTTPException(
+            status_code=400,
+            detail="ROI 和目标区域参数不能为负数",
+        )
+
+    if min(
+        payload.roi_w,
+        payload.roi_h,
+        payload.target_w,
+        payload.target_h,
+    ) < 1:
+        raise HTTPException(
+            status_code=400,
+            detail="ROI 和目标区域宽高必须大于 0",
+        )
+
+    db.set_app_settings(
+        {
+            "vision_lookback_ms": payload.lookback_ms,
+            "vision_match_threshold": payload.match_threshold,
+            "vision_stable_px": payload.stable_px,
+            "vision_stable_frames": payload.stable_frames,
+            "vision_roi_x": payload.roi_x,
+            "vision_roi_y": payload.roi_y,
+            "vision_roi_w": payload.roi_w,
+            "vision_roi_h": payload.roi_h,
+            "vision_target_x": payload.target_x,
+            "vision_target_y": payload.target_y,
+            "vision_target_w": payload.target_w,
+            "vision_target_h": payload.target_h,
+        }
+    )
+
+    return {
+        "ok": True,
+        "vision_capture": _vision_capture_settings(),
+    }
+
+
 @router.get("/settings")
 def get_settings():
     capture_timing = _capture_timing_settings()
     debug_capture = _debug_capture_settings()
+    vision_capture = _vision_capture_settings()
 
     return {
         "bambu": {
@@ -542,6 +688,7 @@ def get_settings():
             "capture_rewind_frames": capture_timing["frames"],
             "capture_rewind_ms": capture_timing["milliseconds"],
             "debug_capture": debug_capture,
+            "vision_capture": vision_capture,
         },
         "video": {
             "auto_generate_video": settings.auto_generate_video,
