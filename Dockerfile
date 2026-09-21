@@ -9,6 +9,8 @@ RUN npm run build
 
 FROM python:3.12-slim
 
+ARG USE_CN_MIRROR=true
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     WEB_DIST=/app/web/dist
@@ -23,7 +25,18 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN if [ "$USE_CN_MIRROR" = "true" ]; then \
+      pip install --no-cache-dir \
+        -i https://pypi.tuna.tsinghua.edu.cn/simple \
+        --timeout 120 \
+        --retries 5 \
+        -r requirements.txt; \
+    else \
+      pip install --no-cache-dir \
+        --timeout 120 \
+        --retries 5 \
+        -r requirements.txt; \
+    fi
 
 COPY app ./app
 COPY main.py .
