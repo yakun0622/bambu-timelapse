@@ -484,6 +484,59 @@ class YiCamera:
             None,
         )
 
+    def capture_history_frame(
+        self,
+        target: Path,
+        trigger_at,
+        rewind_ms,
+    ):
+        started = time.monotonic()
+
+        with self._rtsp_lock:
+            history = list(self._rtsp_history)
+            latest_at = self._latest_frame_at
+
+        latest_age_ms = (
+            int((time.monotonic() - latest_at) * 1000)
+            if latest_at is not None
+            else None
+        )
+
+        if (
+            not history
+            or latest_age_ms is None
+            or latest_age_ms
+            > settings.rtsp_frame_max_age * 1000
+        ):
+            return (
+                False,
+                int((time.monotonic() - started) * 1000),
+                "RTSP frame history is not ready",
+                None,
+            )
+
+        target_at = trigger_at - max(0, int(rewind_ms)) / 1000.0
+        selected = min(
+            history,
+            key=lambda item: abs(item["at"] - target_at),
+        )
+
+        tmp = target.with_name(target.stem + ".tmp.jpg")
+        tmp.parent.mkdir(parents=True, exist_ok=True)
+        tmp.write_bytes(selected["data"])
+        tmp.replace(target)
+
+        actual_before_trigger_ms = int(
+            (trigger_at - selected["at"]) * 1000
+        )
+
+        return (
+            True,
+            int((time.monotonic() - started) * 1000),
+            None,
+            actual_before_trigger_ms,
+        )
+
     def _snapshot_http(self, target: Path):
         started = time.monotonic()
         last_error = None
