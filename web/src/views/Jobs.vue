@@ -326,28 +326,31 @@ onBeforeUnmount(() => {
             <button
               v-if="selected.video_path"
               type="button"
-              class="button"
+              class="button video-action-button video-preview-action"
               @click="openVideoPreview"
             >
-              预览延时视频
+              <span class="video-action-icon">▶</span>
+              <span>预览视频</span>
             </button>
 
             <a
               v-if="selected.video_path"
-              class="button link-button secondary-button"
+              class="button link-button secondary-button video-action-button video-download-action"
               :href="`/api/jobs/${selected.id}/video`"
             >
-              下载视频
+              <span class="video-action-icon download">↓</span>
+              <span>下载视频</span>
             </a>
 
             <button
               v-else-if="successShots.length >= 2"
               type="button"
-              class="button secondary-button"
+              class="button secondary-button video-action-button"
               :disabled="generatingVideo"
               @click="generateVideo"
             >
-              {{ generatingVideo ? "正在生成…" : "手动生成视频" }}
+              <span class="video-action-icon">▶</span>
+              <span>{{ generatingVideo ? "正在生成…" : "生成视频" }}</span>
             </button>
 
             <span
