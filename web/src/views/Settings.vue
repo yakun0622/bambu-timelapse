@@ -844,7 +844,7 @@ onMounted(loadSettings);
               </div>
             </label>
 
-            <label>
+            <label v-if="visionCapture.bed_locator_mode !== 'reference'">
               <span>喷头稳定允许位移</span>
               <div class="capture-number-field">
                 <input
@@ -858,7 +858,7 @@ onMounted(loadSettings);
               </div>
             </label>
 
-            <label>
+            <label v-if="visionCapture.bed_locator_mode !== 'reference'">
               <span>热床稳定允许位移</span>
               <div class="capture-number-field">
                 <input
@@ -872,7 +872,7 @@ onMounted(loadSettings);
               </div>
             </label>
 
-            <label>
+            <label v-if="visionCapture.bed_locator_mode !== 'reference'">
               <span>连续稳定帧</span>
               <div class="capture-number-field">
                 <input
@@ -903,7 +903,7 @@ onMounted(loadSettings);
               </div>
             </label>
 
-            <label>
+            <label v-if="visionCapture.bed_locator_mode !== 'reference'">
               <span>最大对齐位移</span>
               <div class="capture-number-field">
                 <input
