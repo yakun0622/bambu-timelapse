@@ -45,6 +45,13 @@ class VisionCaptureRequest(BaseModel):
     bed_locator_mode: str
     aruco_id: int
     aruco_dictionary: str
+    reference_similarity_threshold: float
+    reference_start_layer: int
+    reference_max_shift_px: int
+    model_roi_x: int
+    model_roi_y: int
+    model_roi_w: int
+    model_roi_h: int
     stable_px: int
     bed_stable_px: int
     stable_frames: int
@@ -596,6 +603,13 @@ def _vision_capture_settings():
             "vision_bed_locator_mode",
             "vision_aruco_id",
             "vision_aruco_dictionary",
+            "vision_reference_similarity_threshold",
+            "vision_reference_start_layer",
+            "vision_reference_max_shift_px",
+            "vision_model_roi_x",
+            "vision_model_roi_y",
+            "vision_model_roi_w",
+            "vision_model_roi_h",
             "vision_stable_px",
             "vision_bed_stable_px",
             "vision_stable_frames",
@@ -641,7 +655,7 @@ def _vision_capture_settings():
         ),
         "bed_locator_mode": values.get(
             "vision_bed_locator_mode",
-            "aruco",
+            "reference",
         ).strip().lower(),
         "aruco_id": max(
             0,
@@ -651,6 +665,42 @@ def _vision_capture_settings():
             "vision_aruco_dictionary",
             "DICT_4X4_50",
         ).strip().upper(),
+        "reference_similarity_threshold": min(
+            1.0,
+            max(
+                0.0,
+                float(
+                    values.get(
+                        "vision_reference_similarity_threshold",
+                        "0.80",
+                    )
+                ),
+            ),
+        ),
+        "reference_start_layer": max(
+            2,
+            int(
+                values.get(
+                    "vision_reference_start_layer",
+                    "2",
+                )
+            ),
+        ),
+        "reference_max_shift_px": max(
+            1,
+            int(
+                values.get(
+                    "vision_reference_max_shift_px",
+                    "60",
+                )
+            ),
+        ),
+        "model_roi": {
+            "x": max(0, int(values.get("vision_model_roi_x", "80"))),
+            "y": max(0, int(values.get("vision_model_roi_y", "150"))),
+            "w": max(1, int(values.get("vision_model_roi_w", "1120"))),
+            "h": max(1, int(values.get("vision_model_roi_h", "520"))),
+        },
         "stable_px": max(
             0,
             int(values.get("vision_stable_px", "8")),
@@ -754,12 +804,30 @@ def update_vision_capture(payload: VisionCaptureRequest):
             detail="热床模板匹配阈值必须在 0 到 1 之间",
         )
 
-    bed_locator_mode = payload.bed_locator_mode.strip().lower()
-
-    if bed_locator_mode not in {"aruco", "template"}:
+    if not 0 <= payload.reference_similarity_threshold <= 1:
         raise HTTPException(
             status_code=400,
-            detail="热床定位方式必须为 aruco 或 template",
+            detail="上一帧相似度阈值必须在 0 到 1 之间",
+        )
+
+    if payload.reference_start_layer < 2 or payload.reference_start_layer > 100:
+        raise HTTPException(
+            status_code=400,
+            detail="上一帧匹配启用层必须在 2 到 100 之间",
+        )
+
+    if payload.reference_max_shift_px < 1 or payload.reference_max_shift_px > 300:
+        raise HTTPException(
+            status_code=400,
+            detail="上一帧最大位移必须在 1 到 300 px 之间",
+        )
+
+    bed_locator_mode = payload.bed_locator_mode.strip().lower()
+
+    if bed_locator_mode not in {"reference", "aruco", "template"}:
+        raise HTTPException(
+            status_code=400,
+            detail="视觉定位方式必须为 reference、aruco 或 template",
         )
 
     allowed_dictionaries = {
@@ -822,6 +890,10 @@ def update_vision_capture(payload: VisionCaptureRequest):
         payload.bed_target_y,
         payload.bed_target_w,
         payload.bed_target_h,
+        payload.model_roi_x,
+        payload.model_roi_y,
+        payload.model_roi_w,
+        payload.model_roi_h,
     )
 
     if any(value < 0 for value in rect_values):
@@ -839,6 +911,8 @@ def update_vision_capture(payload: VisionCaptureRequest):
         payload.bed_roi_h,
         payload.bed_target_w,
         payload.bed_target_h,
+        payload.model_roi_w,
+        payload.model_roi_h,
     )
 
     if min(size_values) < 1:
@@ -855,6 +929,13 @@ def update_vision_capture(payload: VisionCaptureRequest):
             "vision_bed_locator_mode": bed_locator_mode,
             "vision_aruco_id": payload.aruco_id,
             "vision_aruco_dictionary": aruco_dictionary,
+            "vision_reference_similarity_threshold": payload.reference_similarity_threshold,
+            "vision_reference_start_layer": payload.reference_start_layer,
+            "vision_reference_max_shift_px": payload.reference_max_shift_px,
+            "vision_model_roi_x": payload.model_roi_x,
+            "vision_model_roi_y": payload.model_roi_y,
+            "vision_model_roi_w": payload.model_roi_w,
+            "vision_model_roi_h": payload.model_roi_h,
             "vision_stable_px": payload.stable_px,
             "vision_bed_stable_px": payload.bed_stable_px,
             "vision_stable_frames": payload.stable_frames,
