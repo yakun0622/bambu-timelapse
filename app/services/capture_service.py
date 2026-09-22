@@ -64,6 +64,13 @@ class CaptureService:
                 "vision_bed_locator_mode",
                 "vision_aruco_id",
                 "vision_aruco_dictionary",
+                "vision_reference_similarity_threshold",
+                "vision_reference_start_layer",
+                "vision_reference_max_shift_px",
+                "vision_model_roi_x",
+                "vision_model_roi_y",
+                "vision_model_roi_w",
+                "vision_model_roi_h",
                 "vision_stable_px",
                 "vision_bed_stable_px",
                 "vision_stable_frames",
@@ -117,7 +124,7 @@ class CaptureService:
             ),
             "bed_locator_mode": runtime.get(
                 "vision_bed_locator_mode",
-                "aruco",
+                "reference",
             ).strip().lower(),
             "aruco_id": max(
                 0,
@@ -127,6 +134,42 @@ class CaptureService:
                 "vision_aruco_dictionary",
                 "DICT_4X4_50",
             ).strip().upper(),
+            "reference_similarity_threshold": min(
+                1.0,
+                max(
+                    0.0,
+                    float(
+                        runtime.get(
+                            "vision_reference_similarity_threshold",
+                            "0.80",
+                        )
+                    ),
+                ),
+            ),
+            "reference_start_layer": max(
+                2,
+                int(
+                    runtime.get(
+                        "vision_reference_start_layer",
+                        "2",
+                    )
+                ),
+            ),
+            "reference_max_shift_px": max(
+                1,
+                int(
+                    runtime.get(
+                        "vision_reference_max_shift_px",
+                        "60",
+                    )
+                ),
+            ),
+            "model_roi": {
+                "x": max(0, int(runtime.get("vision_model_roi_x", "80"))),
+                "y": max(0, int(runtime.get("vision_model_roi_y", "150"))),
+                "w": max(1, int(runtime.get("vision_model_roi_w", "1120"))),
+                "h": max(1, int(runtime.get("vision_model_roi_h", "520"))),
+            },
             "stable_px": max(
                 0,
                 int(runtime.get("vision_stable_px", "8")),
@@ -184,6 +227,8 @@ class CaptureService:
 
     def _capture_by_vision(
         self,
+        job_id,
+        layer,
         target,
         triggered_at,
         runtime,
@@ -197,26 +242,61 @@ class CaptureService:
             config["lookback_ms"],
         )
 
-        result, vision_error = vision_selector.select(
-            history=history,
-            trigger_at=triggered_at,
-            head_template_path=config["template_path"],
-            head_roi=config["roi"],
-            head_target=config["target"],
-            bed_template_path=config["bed_template_path"],
-            bed_roi=config["bed_roi"],
-            bed_target=config["bed_target"],
-            bed_locator_mode=config["bed_locator_mode"],
-            aruco_id=config["aruco_id"],
-            aruco_dictionary=config["aruco_dictionary"],
-            head_match_threshold=config["match_threshold"],
-            bed_match_threshold=config["bed_match_threshold"],
-            stable_px=config["stable_px"],
-            bed_stable_px=config["bed_stable_px"],
-            stable_frames=config["stable_frames"],
-            align_enabled=config["align_enabled"],
-            align_max_shift_px=config["align_max_shift_px"],
-        )
+        if config["bed_locator_mode"] == "reference":
+            previous = db.get_previous_snapshot(
+                job_id,
+                layer,
+            )
+            if (
+                layer < config["reference_start_layer"]
+                or not previous
+                or not previous.get("file_path")
+            ):
+                result = None
+                vision_error = (
+                    f"第 {layer} 层尚无可用上一帧参考图"
+                )
+            else:
+                result, vision_error = (
+                    vision_selector.select_reference(
+                        history=history,
+                        trigger_at=triggered_at,
+                        reference_path=previous["file_path"],
+                        model_roi=config["model_roi"],
+                        head_template_path=config["template_path"],
+                        head_roi=config["roi"],
+                        head_target=config["target"],
+                        head_match_threshold=config["match_threshold"],
+                        similarity_threshold=config[
+                            "reference_similarity_threshold"
+                        ],
+                        max_shift_px=config[
+                            "reference_max_shift_px"
+                        ],
+                        align_enabled=config["align_enabled"],
+                    )
+                )
+        else:
+            result, vision_error = vision_selector.select(
+                history=history,
+                trigger_at=triggered_at,
+                head_template_path=config["template_path"],
+                head_roi=config["roi"],
+                head_target=config["target"],
+                bed_template_path=config["bed_template_path"],
+                bed_roi=config["bed_roi"],
+                bed_target=config["bed_target"],
+                bed_locator_mode=config["bed_locator_mode"],
+                aruco_id=config["aruco_id"],
+                aruco_dictionary=config["aruco_dictionary"],
+                head_match_threshold=config["match_threshold"],
+                bed_match_threshold=config["bed_match_threshold"],
+                stable_px=config["stable_px"],
+                bed_stable_px=config["bed_stable_px"],
+                stable_frames=config["stable_frames"],
+                align_enabled=config["align_enabled"],
+                align_max_shift_px=config["align_max_shift_px"],
+            )
 
         if result:
             tmp = target.with_name(
@@ -242,17 +322,22 @@ class CaptureService:
                 ],
                 "selection_mode": "vision",
                 "vision_score": result["head_score"],
-                "bed_score": result["bed_score"],
-                "bed_locator_mode": result["bed_locator_mode"],
-                "aruco_id": result["aruco_id"],
-                "vision_final_score": result["final_score"],
-                "vision_stable": result["stable"],
-                "bed_stable": result["stable"],
-                "vision_stable_count": result["stable_count"],
+                "bed_score": result.get("bed_score"),
+                "bed_locator_mode": config["bed_locator_mode"],
+                "aruco_id": result.get("aruco_id"),
+                "similarity_score": result.get("similarity_score"),
+                "vision_final_score": result.get("final_score"),
+                "vision_stable": True,
+                "bed_stable": (
+                    result.get("stable")
+                    if config["bed_locator_mode"] != "reference"
+                    else None
+                ),
+                "vision_stable_count": result.get("stable_count"),
                 "vision_x": result["head_x"],
                 "vision_y": result["head_y"],
-                "bed_x": result["bed_x"],
-                "bed_y": result["bed_y"],
+                "bed_x": result.get("bed_x"),
+                "bed_y": result.get("bed_y"),
                 "align_dx": result["align_dx"],
                 "align_dy": result["align_dy"],
                 "vision_error": None,
@@ -287,7 +372,12 @@ class CaptureService:
             "vision_score": None,
             "bed_score": None,
             "bed_locator_mode": config["bed_locator_mode"],
-            "aruco_id": config["aruco_id"],
+            "aruco_id": (
+                config["aruco_id"]
+                if config["bed_locator_mode"] == "aruco"
+                else None
+            ),
+            "similarity_score": None,
             "vision_final_score": None,
             "vision_stable": None,
             "bed_stable": None,
@@ -455,6 +545,8 @@ class CaptureService:
 
             if rewind_mode == "vision":
                 result = self._capture_by_vision(
+                    job_id,
+                    layer,
                     target,
                     triggered_at,
                     runtime,
@@ -492,6 +584,7 @@ class CaptureService:
                     "bed_score": None,
                     "bed_locator_mode": None,
                     "aruco_id": None,
+                    "similarity_score": None,
                     "vision_final_score": None,
                     "vision_stable": None,
                     "bed_stable": None,
@@ -531,6 +624,7 @@ class CaptureService:
                     bed_stable=result["bed_stable"],
                     bed_locator_mode=result["bed_locator_mode"],
                     aruco_id=result["aruco_id"],
+                    similarity_score=result["similarity_score"],
                     align_dx=result["align_dx"],
                     align_dy=result["align_dy"],
                 )
@@ -557,6 +651,7 @@ class CaptureService:
                         "bed_score": result["bed_score"],
                         "bed_locator_mode": result["bed_locator_mode"],
                         "aruco_id": result["aruco_id"],
+                        "similarity_score": result["similarity_score"],
                         "vision_final_score": result[
                             "vision_final_score"
                         ],
