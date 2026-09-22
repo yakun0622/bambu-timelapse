@@ -8,6 +8,8 @@ const previewIndex = ref(0);
 const previewPlaying = ref(false);
 const previewFps = ref(5);
 const previewLoop = ref(true);
+const generatingVideo = ref(false);
+const videoMessage = ref("");
 
 let previewTimer = null;
 let refreshTimer = null;
@@ -172,6 +174,44 @@ function changeFps() {
   if (previewPlaying.value) schedulePreview();
 }
 
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function generateVideo() {
+  if (!selected.value || successShots.value.length < 2) return;
+
+  generatingVideo.value = true;
+  videoMessage.value = "";
+
+  try {
+    const response = await api(
+      `/api/jobs/${selected.value.id}/video/generate`,
+      { method: "POST" }
+    );
+
+    videoMessage.value =
+      `正在生成视频，共 ${response.frames} 张图片…`;
+
+    for (let attempt = 0; attempt < 90; attempt += 1) {
+      await sleep(2000);
+      await refreshSelected();
+
+      if (selected.value?.video_path) {
+        videoMessage.value = "视频生成完成";
+        return;
+      }
+    }
+
+    videoMessage.value =
+      "视频仍在后台生成，可稍后刷新任务查看";
+  } catch (error) {
+    videoMessage.value = error.message || "视频生成失败";
+  } finally {
+    generatingVideo.value = false;
+  }
+}
+
 onMounted(async () => {
   await load();
 
@@ -278,8 +318,31 @@ onBeforeUnmount(() => {
               下载延时视频
             </a>
 
+            <button
+              v-if="successShots.length >= 2"
+              type="button"
+              class="button secondary-button"
+              :disabled="generatingVideo"
+              @click="generateVideo"
+            >
+              {{
+                generatingVideo
+                  ? "正在生成…"
+                  : selected.video_path
+                    ? "重新生成视频"
+                    : "手动生成视频"
+              }}
+            </button>
+
             <span
-              v-else-if="successShots.length"
+              v-if="videoMessage"
+              class="preview-note"
+            >
+              {{ videoMessage }}
+            </span>
+
+            <span
+              v-else-if="!selected.video_path && successShots.length"
               class="preview-note"
             >
               视频尚未生成，可先使用照片延时预览
