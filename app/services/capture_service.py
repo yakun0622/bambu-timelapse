@@ -104,7 +104,7 @@ class CaptureService:
         return {
             "lookback_ms": max(
                 500,
-                int(runtime.get("vision_lookback_ms", "6000")),
+                int(runtime.get("vision_lookback_ms", "8000")),
             ),
             "match_threshold": min(
                 1.0,
@@ -144,7 +144,7 @@ class CaptureService:
                     float(
                         runtime.get(
                             "vision_reference_similarity_threshold",
-                            "0.80",
+                            "0.50",
                         )
                     ),
                 ),
@@ -172,7 +172,7 @@ class CaptureService:
                 float(
                     runtime.get(
                         "vision_motion_max_px",
-                        "3.0",
+                        "2.5",
                     )
                 ),
             ),
