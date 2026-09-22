@@ -255,6 +255,193 @@ class VisionSelector:
 
         return self._encode_jpeg(aligned), dx, dy
 
+    def diagnose_frame(
+        self,
+        frame_data,
+        head_template_path,
+        head_roi,
+        head_target,
+        bed_template_path,
+        bed_roi,
+        bed_target,
+        bed_locator_mode="aruco",
+        aruco_id=23,
+        aruco_dictionary="DICT_4X4_50",
+        head_match_threshold=0.78,
+        bed_match_threshold=0.78,
+    ):
+        frame_gray = self._decode(
+            frame_data,
+            grayscale=True,
+        )
+
+        if frame_gray is None:
+            return {
+                "ok": False,
+                "reason": "当前 RTSP 帧解码失败",
+            }
+
+        head_template = self._load_template(
+            head_template_path
+        )
+        if head_template is None:
+            return {
+                "ok": False,
+                "reason": "喷头模板未配置",
+            }
+
+        mode = str(bed_locator_mode).strip().lower()
+        if mode not in {"aruco", "template"}:
+            mode = "aruco"
+
+        head = self._detect(
+            frame_gray,
+            head_template,
+            head_roi,
+        )
+        head_ok = (
+            head is not None
+            and head["score"] >= float(head_match_threshold)
+        )
+        head_target_ok = (
+            head_ok
+            and self._in_target(head, head_target)
+        )
+
+        bed = None
+        bed_detected = False
+        bed_threshold_ok = False
+        bed_target_ok = False
+
+        if mode == "aruco":
+            bed = self._detect_aruco(
+                frame_gray,
+                bed_roi,
+                aruco_id,
+                aruco_dictionary,
+            )
+            bed_detected = bed is not None
+            bed_threshold_ok = bed_detected
+        else:
+            bed_template = self._load_template(
+                bed_template_path
+            )
+            if bed_template is None:
+                return {
+                    "ok": False,
+                    "reason": "热床锚点模板未配置",
+                }
+            bed = self._detect(
+                frame_gray,
+                bed_template,
+                bed_roi,
+            )
+            bed_detected = bed is not None
+            bed_threshold_ok = (
+                bed_detected
+                and bed["score"] >= float(
+                    bed_match_threshold
+                )
+            )
+
+        if bed_threshold_ok:
+            bed_target_ok = self._in_target(
+                bed,
+                bed_target,
+            )
+
+        reasons = []
+        if not head_ok:
+            if head is None:
+                reasons.append("喷头未识别")
+            else:
+                reasons.append(
+                    "喷头匹配分数低于阈值"
+                )
+        elif not head_target_ok:
+            reasons.append("喷头未进入目标区域")
+
+        if not bed_detected:
+            reasons.append(
+                (
+                    f"未识别 ArUco #{aruco_id}"
+                    if mode == "aruco"
+                    else "热床锚点未识别"
+                )
+            )
+        elif not bed_threshold_ok:
+            reasons.append("热床匹配分数低于阈值")
+        elif not bed_target_ok:
+            reasons.append(
+                (
+                    "ArUco 未进入热床目标区域"
+                    if mode == "aruco"
+                    else "热床锚点未进入目标区域"
+                )
+            )
+
+        return {
+            "ok": bool(
+                head_target_ok
+                and bed_target_ok
+            ),
+            "reason": (
+                "当前画面满足喷头与热床定位条件"
+                if head_target_ok and bed_target_ok
+                else "；".join(reasons)
+            ),
+            "head": {
+                "detected": head is not None,
+                "score": (
+                    round(head["score"], 4)
+                    if head is not None
+                    else None
+                ),
+                "threshold_ok": head_ok,
+                "in_target": head_target_ok,
+                "x": head["x"] if head else None,
+                "y": head["y"] if head else None,
+                "center_x": (
+                    round(head["center_x"], 1)
+                    if head else None
+                ),
+                "center_y": (
+                    round(head["center_y"], 1)
+                    if head else None
+                ),
+            },
+            "bed": {
+                "mode": mode,
+                "detected": bed_detected,
+                "score": (
+                    round(bed["score"], 4)
+                    if bed is not None
+                    else None
+                ),
+                "in_target": bed_target_ok,
+                "marker_id": (
+                    bed.get("marker_id")
+                    if bed is not None
+                    else None
+                ),
+                "marker_size_px": (
+                    bed.get("marker_size_px")
+                    if bed is not None
+                    else None
+                ),
+                "x": bed["x"] if bed else None,
+                "y": bed["y"] if bed else None,
+                "center_x": (
+                    round(bed["center_x"], 1)
+                    if bed else None
+                ),
+                "center_y": (
+                    round(bed["center_y"], 1)
+                    if bed else None
+                ),
+            },
+        }
+
     def select(
         self,
         history,
@@ -309,8 +496,20 @@ class VisionSelector:
 
         candidates = []
         stable_run = []
+        diagnostic = {
+            "frames": 0,
+            "head_detected": 0,
+            "head_threshold": 0,
+            "head_target": 0,
+            "bed_detected": 0,
+            "bed_target": 0,
+            "max_head_score": None,
+            "max_bed_score": None,
+            "max_stable_run": 0,
+        }
 
         for item in history:
+            diagnostic["frames"] += 1
             frame_gray = self._decode(
                 item["data"],
                 grayscale=True,
@@ -325,6 +524,19 @@ class VisionSelector:
                 head_template,
                 head_roi,
             )
+            if head is not None:
+                diagnostic["head_detected"] += 1
+                diagnostic["max_head_score"] = max(
+                    diagnostic["max_head_score"]
+                    if diagnostic["max_head_score"] is not None
+                    else head["score"],
+                    head["score"],
+                )
+                if head["score"] >= float(head_match_threshold):
+                    diagnostic["head_threshold"] += 1
+                    if self._in_target(head, head_target):
+                        diagnostic["head_target"] += 1
+
             if bed_locator_mode == "aruco":
                 bed = self._detect_aruco(
                     frame_gray,
@@ -338,6 +550,26 @@ class VisionSelector:
                     bed_template,
                     bed_roi,
                 )
+
+            if bed is not None:
+                diagnostic["bed_detected"] += 1
+                diagnostic["max_bed_score"] = max(
+                    diagnostic["max_bed_score"]
+                    if diagnostic["max_bed_score"] is not None
+                    else bed["score"],
+                    bed["score"],
+                )
+                bed_threshold_ok = (
+                    bed_locator_mode == "aruco"
+                    or bed["score"] >= float(
+                        bed_match_threshold
+                    )
+                )
+                if (
+                    bed_threshold_ok
+                    and self._in_target(bed, bed_target)
+                ):
+                    diagnostic["bed_target"] += 1
 
             valid = (
                 head is not None
@@ -384,6 +616,10 @@ class VisionSelector:
             }
 
             stable_run.append(candidate)
+            diagnostic["max_stable_run"] = max(
+                diagnostic["max_stable_run"],
+                len(stable_run),
+            )
 
             if len(stable_run) >= stable_frames:
                 for run_item in stable_run:
@@ -406,9 +642,40 @@ class VisionSelector:
                 )
 
         if not candidates:
+            max_head = diagnostic["max_head_score"]
+            head_text = (
+                f"喷头最高 {max_head:.4f}"
+                if max_head is not None
+                else "喷头未识别"
+            )
+
+            if bed_locator_mode == "aruco":
+                bed_text = (
+                    f"ArUco #{aruco_id} 已识别 "
+                    f"{diagnostic['bed_detected']} 帧"
+                    if diagnostic["bed_detected"]
+                    else f"ArUco #{aruco_id} 未识别"
+                )
+            else:
+                max_bed = diagnostic["max_bed_score"]
+                bed_text = (
+                    f"热床最高 {max_bed:.4f}"
+                    if max_bed is not None
+                    else "热床锚点未识别"
+                )
+
+            detail = (
+                f"{head_text}，"
+                f"喷头目标区 {diagnostic['head_target']} 帧；"
+                f"{bed_text}，"
+                f"热床目标区 {diagnostic['bed_target']} 帧；"
+                f"最长稳定 {diagnostic['max_stable_run']}/"
+                f"{stable_frames} 帧"
+            )
+
             return (
                 None,
-                "没有找到喷头和热床同时进入目标区域且连续稳定的帧",
+                detail,
             )
 
         longest = max(
