@@ -523,6 +523,29 @@ class VisionSelector:
         )
         return self._encode_jpeg(aligned)
 
+    def _sharpness(self, gray_roi):
+        return float(
+            cv2.Laplacian(
+                gray_roi,
+                cv2.CV_64F,
+            ).var()
+        )
+
+    def _motion_px(self, previous_roi, current_roi):
+        motion = self._ecc_translation(
+            previous_roi,
+            current_roi,
+        )
+        if motion is None:
+            return None
+
+        return float(
+            math.hypot(
+                motion["dx"],
+                motion["dy"],
+            )
+        )
+
     def select_reference(
         self,
         history,
@@ -535,6 +558,9 @@ class VisionSelector:
         head_match_threshold=0.60,
         similarity_threshold=0.80,
         max_shift_px=60,
+        motion_max_px=3.0,
+        motion_stable_frames=2,
+        sharpness_min=60.0,
         align_enabled=True,
     ):
         if not history:
@@ -562,7 +588,9 @@ class VisionSelector:
             model_roi,
         )
 
-        best = None
+        decoded = []
+        previous_roi = None
+
         diagnostic = {
             "frames": 0,
             "head_detected": 0,
@@ -570,16 +598,50 @@ class VisionSelector:
             "ecc_ok": 0,
             "max_head_score": None,
             "max_similarity": None,
+            "max_sharpness": None,
+            "min_motion_px": None,
+            "stable_run": 0,
         }
 
-        for item in history:
+        for index, item in enumerate(history):
             diagnostic["frames"] += 1
             frame_gray = self._decode(
                 item["data"],
                 grayscale=True,
             )
             if frame_gray is None:
+                previous_roi = None
                 continue
+
+            candidate_roi = self._crop_gray(
+                frame_gray,
+                model_roi,
+            )
+            sharpness = self._sharpness(
+                candidate_roi
+            )
+            diagnostic["max_sharpness"] = max(
+                diagnostic["max_sharpness"]
+                if diagnostic["max_sharpness"] is not None
+                else sharpness,
+                sharpness,
+            )
+
+            motion_px = None
+            if previous_roi is not None:
+                motion_px = self._motion_px(
+                    previous_roi,
+                    candidate_roi,
+                )
+                if motion_px is not None:
+                    diagnostic["min_motion_px"] = min(
+                        diagnostic["min_motion_px"]
+                        if diagnostic["min_motion_px"] is not None
+                        else motion_px,
+                        motion_px,
+                    )
+
+            previous_roi = candidate_roi
 
             head = self._detect(
                 frame_gray,
@@ -587,6 +649,17 @@ class VisionSelector:
                 head_roi,
             )
             if head is None:
+                decoded.append(
+                    {
+                        "index": index,
+                        "item": item,
+                        "roi": candidate_roi,
+                        "head": None,
+                        "sharpness": sharpness,
+                        "motion_px": motion_px,
+                        "ecc": None,
+                    }
+                )
                 continue
 
             diagnostic["head_detected"] += 1
@@ -601,54 +674,160 @@ class VisionSelector:
                 head["score"] < float(head_match_threshold)
                 or not self._in_target(head, head_target)
             ):
+                decoded.append(
+                    {
+                        "index": index,
+                        "item": item,
+                        "roi": candidate_roi,
+                        "head": head,
+                        "sharpness": sharpness,
+                        "motion_px": motion_px,
+                        "ecc": None,
+                    }
+                )
                 continue
 
             diagnostic["head_target"] += 1
-            candidate_roi = self._crop_gray(
-                frame_gray,
-                model_roi,
-            )
 
             ecc = self._ecc_translation(
                 reference_roi,
                 candidate_roi,
             )
-            if ecc is None:
-                continue
+            if ecc is not None:
+                diagnostic["ecc_ok"] += 1
+                diagnostic["max_similarity"] = max(
+                    diagnostic["max_similarity"]
+                    if diagnostic["max_similarity"] is not None
+                    else ecc["score"],
+                    ecc["score"],
+                )
 
-            diagnostic["ecc_ok"] += 1
-            diagnostic["max_similarity"] = max(
-                diagnostic["max_similarity"]
-                if diagnostic["max_similarity"] is not None
-                else ecc["score"],
-                ecc["score"],
+            decoded.append(
+                {
+                    "index": index,
+                    "item": item,
+                    "roi": candidate_roi,
+                    "head": head,
+                    "sharpness": sharpness,
+                    "motion_px": motion_px,
+                    "ecc": ecc,
+                }
             )
 
+        valid = []
+        fallback_pool = []
+
+        for candidate in decoded:
+            head = candidate["head"]
+            ecc = candidate["ecc"]
+
+            if head is None or ecc is None:
+                continue
+
             if (
-                abs(ecc["dx"]) > float(max_shift_px)
+                head["score"] < float(head_match_threshold)
+                or not self._in_target(head, head_target)
+                or abs(ecc["dx"]) > float(max_shift_px)
                 or abs(ecc["dy"]) > float(max_shift_px)
             ):
                 continue
 
-            candidate = {
-                "item": item,
-                "head": head,
-                "similarity": ecc["score"],
-                "dx": ecc["dx"],
-                "dy": ecc["dy"],
-                "warp": ecc["warp"],
-                "before_trigger_ms": int(
-                    (trigger_at - item["at"]) * 1000
-                ),
-            }
+            candidate["similarity"] = ecc["score"]
+            fallback_pool.append(candidate)
 
             if (
-                best is None
-                or candidate["similarity"] > best["similarity"]
+                ecc["score"] >= float(similarity_threshold)
+                and candidate["sharpness"] >= float(sharpness_min)
             ):
-                best = candidate
+                valid.append(candidate)
 
-        if best is None:
+        stable_required = max(
+            1,
+            int(motion_stable_frames),
+        )
+        motion_limit = max(
+            0.0,
+            float(motion_max_px),
+        )
+
+        stable_runs = []
+        current_run = []
+
+        for candidate in valid:
+            if not current_run:
+                current_run = [candidate]
+                continue
+
+            previous = current_run[-1]
+            contiguous = (
+                candidate["index"]
+                == previous["index"] + 1
+            )
+            motion_ok = (
+                candidate["motion_px"] is not None
+                and candidate["motion_px"] <= motion_limit
+            )
+
+            if contiguous and motion_ok:
+                current_run.append(candidate)
+            else:
+                if len(current_run) >= stable_required:
+                    stable_runs.append(current_run)
+                current_run = [candidate]
+
+        if len(current_run) >= stable_required:
+            stable_runs.append(current_run)
+
+        if stable_runs:
+            diagnostic["stable_run"] = max(
+                len(run)
+                for run in stable_runs
+            )
+
+            best_run = max(
+                stable_runs,
+                key=lambda run: (
+                    len(run),
+                    max(
+                        item["similarity"]
+                        for item in run
+                    ),
+                ),
+            )
+
+            best = max(
+                best_run,
+                key=lambda item: (
+                    item["sharpness"],
+                    item["similarity"],
+                ),
+            )
+            quality_fallback = False
+            quality_reason = None
+            stable_count = len(best_run)
+
+        elif fallback_pool:
+            # Do not fall straight back to a fixed time offset: choose the
+            # least-moving, sharpest candidate we actually observed.
+            best = min(
+                fallback_pool,
+                key=lambda item: (
+                    (
+                        item["motion_px"]
+                        if item["motion_px"] is not None
+                        else float("inf")
+                    ),
+                    -item["sharpness"],
+                    -item["similarity"],
+                ),
+            )
+            quality_fallback = True
+            stable_count = 0
+            quality_reason = (
+                "未找到满足静止/清晰度条件的连续帧，"
+                "已选择历史窗口中运动最小且更清晰的候选帧"
+            )
+        else:
             head_text = (
                 f"喷头最高 {diagnostic['max_head_score']:.4f}"
                 if diagnostic["max_head_score"] is not None
@@ -665,26 +844,20 @@ class VisionSelector:
                 f"{similarity_text}",
             )
 
-        if best["similarity"] < float(similarity_threshold):
-            return (
-                None,
-                f"喷头 {best['head']['score']:.4f} 已命中；"
-                f"上一帧最高相似度 {best['similarity']:.4f} "
-                f"低于阈值 {float(similarity_threshold):.2f}",
-            )
-
         frame_data = best["item"]["data"]
         if align_enabled:
             frame_data = self._align_by_ecc(
                 frame_data,
-                best["warp"],
+                best["ecc"]["warp"],
             )
 
         return {
             "frame": frame_data,
             "seq": best["item"]["seq"],
             "at": best["item"]["at"],
-            "before_trigger_ms": best["before_trigger_ms"],
+            "before_trigger_ms": int(
+                (trigger_at - best["item"]["at"]) * 1000
+            ),
             "head_score": round(
                 best["head"]["score"],
                 4,
@@ -693,12 +866,24 @@ class VisionSelector:
                 best["similarity"],
                 4,
             ),
+            "motion_px": (
+                round(best["motion_px"], 2)
+                if best["motion_px"] is not None
+                else None
+            ),
+            "sharpness": round(
+                best["sharpness"],
+                2,
+            ),
+            "stable_count": stable_count,
+            "quality_fallback": quality_fallback,
+            "quality_reason": quality_reason,
             "align_dx": round(
-                -best["dx"],
+                -best["ecc"]["dx"],
                 2,
             ),
             "align_dy": round(
-                -best["dy"],
+                -best["ecc"]["dy"],
                 2,
             ),
             "head_x": best["head"]["x"],
