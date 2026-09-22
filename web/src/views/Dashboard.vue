@@ -589,18 +589,24 @@ onBeforeUnmount(() => {
                   视觉定位 · 喷头
                   {{ data.latest_snapshot.vision_score ?? "—" }}
                   ·
-                  <template v-if="data.latest_snapshot.bed_locator_mode === 'aruco'">
+                  <template v-if="data.latest_snapshot.bed_locator_mode === 'reference'">
+                    上一帧相似度
+                    {{ data.latest_snapshot.similarity_score ?? "—" }}
+                  </template>
+                  <template v-else-if="data.latest_snapshot.bed_locator_mode === 'aruco'">
                     ArUco #{{ data.latest_snapshot.aruco_id ?? "—" }}
                   </template>
                   <template v-else>
                     热床 {{ data.latest_snapshot.bed_score ?? "—" }}
                   </template>
-                  · {{
-                    data.latest_snapshot.vision_stable
-                      && data.latest_snapshot.bed_stable
-                      ? "双目标稳定"
-                      : "未稳定"
-                  }}
+                  <template v-if="data.latest_snapshot.bed_locator_mode !== 'reference'">
+                    · {{
+                      data.latest_snapshot.vision_stable
+                        && data.latest_snapshot.bed_stable
+                        ? "双目标稳定"
+                        : "未稳定"
+                    }}
+                  </template>
                   <template
                     v-if="
                       data.latest_snapshot.align_dx !== null
