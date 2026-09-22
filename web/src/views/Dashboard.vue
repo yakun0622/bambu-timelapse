@@ -585,15 +585,27 @@ onBeforeUnmount(() => {
                 </strong>
 
                 <small
-                  v-if="data.latest_snapshot.selection_mode === 'vision'"
+                  v-if="
+                    data.latest_snapshot.selection_mode === 'vision'
+                    || data.latest_snapshot.selection_mode === 'vision-clear-fallback'
+                  "
                   class="snapshot-rewind"
                 >
-                  视觉定位 · 喷头
+                  {{
+                    data.latest_snapshot.selection_mode === "vision-clear-fallback"
+                      ? "清晰回退"
+                      : "视觉定位"
+                  }}
+                  · 喷头
                   {{ data.latest_snapshot.vision_score ?? "—" }}
                   ·
                   <template v-if="data.latest_snapshot.bed_locator_mode === 'reference'">
-                    上一帧相似度
+                    相似度
                     {{ data.latest_snapshot.similarity_score ?? "—" }}
+                    · 运动
+                    {{ data.latest_snapshot.motion_px ?? "—" }} px
+                    · 清晰度
+                    {{ data.latest_snapshot.sharpness ?? "—" }}
                   </template>
                   <template v-else-if="data.latest_snapshot.bed_locator_mode === 'aruco'">
                     ArUco #{{ data.latest_snapshot.aruco_id ?? "—" }}
