@@ -2777,3 +2777,27 @@ dd { margin: 0; color: #d9dde2; overflow-wrap: anywhere; }
     width: 100%;
   }
 }
+
+
+.vision-box.model-roi {
+  color: #ff6fb5;
+  border-style: dashed;
+}
+
+.reference-hint {
+  border-color: #3f3555;
+  background: rgba(151, 108, 255, .06);
+}
+
+.reference-hint strong {
+  color: #c3a7ff;
+}
+
+:root[data-theme="light"] .reference-hint {
+  border-color: #ded3f5;
+  background: #faf7ff;
+}
+
+:root[data-theme="light"] .reference-hint strong {
+  color: #7653b5;
+}
