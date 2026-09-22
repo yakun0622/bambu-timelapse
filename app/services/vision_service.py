@@ -442,6 +442,269 @@ class VisionSelector:
             },
         }
 
+    def _crop_gray(self, frame_gray, roi):
+        frame_h, frame_w = frame_gray.shape[:2]
+        x, y, w, h = self._clip_rect(
+            roi,
+            frame_w,
+            frame_h,
+        )
+        return frame_gray[y:y + h, x:x + w]
+
+    def _ecc_translation(
+        self,
+        reference_gray,
+        candidate_gray,
+    ):
+        if reference_gray.shape != candidate_gray.shape:
+            return None
+
+        reference = cv2.GaussianBlur(
+            reference_gray,
+            (5, 5),
+            0,
+        ).astype(np.float32) / 255.0
+        candidate = cv2.GaussianBlur(
+            candidate_gray,
+            (5, 5),
+            0,
+        ).astype(np.float32) / 255.0
+
+        warp = np.eye(2, 3, dtype=np.float32)
+        criteria = (
+            cv2.TERM_CRITERIA_EPS
+            | cv2.TERM_CRITERIA_COUNT,
+            60,
+            1e-5,
+        )
+
+        try:
+            score, warp = cv2.findTransformECC(
+                reference,
+                candidate,
+                warp,
+                cv2.MOTION_TRANSLATION,
+                criteria,
+                None,
+                1,
+            )
+        except cv2.error:
+            return None
+
+        return {
+            "score": float(score),
+            "dx": float(warp[0, 2]),
+            "dy": float(warp[1, 2]),
+            "warp": warp,
+        }
+
+    def _align_by_ecc(
+        self,
+        frame_data,
+        warp,
+    ):
+        frame = self._decode(
+            frame_data,
+            grayscale=False,
+        )
+        if frame is None:
+            return frame_data
+
+        height, width = frame.shape[:2]
+        aligned = cv2.warpAffine(
+            frame,
+            warp,
+            (width, height),
+            flags=(
+                cv2.INTER_LINEAR
+                | cv2.WARP_INVERSE_MAP
+            ),
+            borderMode=cv2.BORDER_REPLICATE,
+        )
+        return self._encode_jpeg(aligned)
+
+    def select_reference(
+        self,
+        history,
+        trigger_at,
+        reference_path,
+        model_roi,
+        head_template_path,
+        head_roi,
+        head_target,
+        head_match_threshold=0.60,
+        similarity_threshold=0.80,
+        max_shift_px=60,
+        align_enabled=True,
+    ):
+        if not history:
+            return None, "RTSP 历史帧为空"
+
+        reference_path = Path(reference_path)
+        if not reference_path.is_file():
+            return None, "上一帧参考图片不存在"
+
+        head_template = self._load_template(
+            head_template_path
+        )
+        if head_template is None:
+            return None, "喷头模板未配置"
+
+        reference = cv2.imread(
+            str(reference_path),
+            cv2.IMREAD_GRAYSCALE,
+        )
+        if reference is None:
+            return None, "上一帧参考图片读取失败"
+
+        reference_roi = self._crop_gray(
+            reference,
+            model_roi,
+        )
+
+        best = None
+        diagnostic = {
+            "frames": 0,
+            "head_detected": 0,
+            "head_target": 0,
+            "ecc_ok": 0,
+            "max_head_score": None,
+            "max_similarity": None,
+        }
+
+        for item in history:
+            diagnostic["frames"] += 1
+            frame_gray = self._decode(
+                item["data"],
+                grayscale=True,
+            )
+            if frame_gray is None:
+                continue
+
+            head = self._detect(
+                frame_gray,
+                head_template,
+                head_roi,
+            )
+            if head is None:
+                continue
+
+            diagnostic["head_detected"] += 1
+            diagnostic["max_head_score"] = max(
+                diagnostic["max_head_score"]
+                if diagnostic["max_head_score"] is not None
+                else head["score"],
+                head["score"],
+            )
+
+            if (
+                head["score"] < float(head_match_threshold)
+                or not self._in_target(head, head_target)
+            ):
+                continue
+
+            diagnostic["head_target"] += 1
+            candidate_roi = self._crop_gray(
+                frame_gray,
+                model_roi,
+            )
+
+            ecc = self._ecc_translation(
+                reference_roi,
+                candidate_roi,
+            )
+            if ecc is None:
+                continue
+
+            diagnostic["ecc_ok"] += 1
+            diagnostic["max_similarity"] = max(
+                diagnostic["max_similarity"]
+                if diagnostic["max_similarity"] is not None
+                else ecc["score"],
+                ecc["score"],
+            )
+
+            if (
+                abs(ecc["dx"]) > float(max_shift_px)
+                or abs(ecc["dy"]) > float(max_shift_px)
+            ):
+                continue
+
+            candidate = {
+                "item": item,
+                "head": head,
+                "similarity": ecc["score"],
+                "dx": ecc["dx"],
+                "dy": ecc["dy"],
+                "warp": ecc["warp"],
+                "before_trigger_ms": int(
+                    (trigger_at - item["at"]) * 1000
+                ),
+            }
+
+            if (
+                best is None
+                or candidate["similarity"] > best["similarity"]
+            ):
+                best = candidate
+
+        if best is None:
+            head_text = (
+                f"喷头最高 {diagnostic['max_head_score']:.4f}"
+                if diagnostic["max_head_score"] is not None
+                else "喷头未识别"
+            )
+            similarity_text = (
+                f"上一帧最高相似度 {diagnostic['max_similarity']:.4f}"
+                if diagnostic["max_similarity"] is not None
+                else "没有可用的上一帧相似度结果"
+            )
+            return (
+                None,
+                f"{head_text}，喷头目标区 {diagnostic['head_target']} 帧；"
+                f"{similarity_text}",
+            )
+
+        if best["similarity"] < float(similarity_threshold):
+            return (
+                None,
+                f"喷头 {best['head']['score']:.4f} 已命中；"
+                f"上一帧最高相似度 {best['similarity']:.4f} "
+                f"低于阈值 {float(similarity_threshold):.2f}",
+            )
+
+        frame_data = best["item"]["data"]
+        if align_enabled:
+            frame_data = self._align_by_ecc(
+                frame_data,
+                best["warp"],
+            )
+
+        return {
+            "frame": frame_data,
+            "seq": best["item"]["seq"],
+            "at": best["item"]["at"],
+            "before_trigger_ms": best["before_trigger_ms"],
+            "head_score": round(
+                best["head"]["score"],
+                4,
+            ),
+            "similarity_score": round(
+                best["similarity"],
+                4,
+            ),
+            "align_dx": round(
+                -best["dx"],
+                2,
+            ),
+            "align_dy": round(
+                -best["dy"],
+                2,
+            ),
+            "head_x": best["head"]["x"],
+            "head_y": best["head"]["y"],
+        }, None
+
     def select(
         self,
         history,
