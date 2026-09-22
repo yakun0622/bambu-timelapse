@@ -70,8 +70,10 @@ class Database:
                     bed_locator_mode TEXT,
                     aruco_id INTEGER,
                     similarity_score REAL,
-                    align_dx INTEGER,
-                    align_dy INTEGER,
+                    motion_px REAL,
+                    sharpness REAL,
+                    align_dx REAL,
+                    align_dy REAL,
                     error TEXT,
                     UNIQUE(job_id, layer)
                 );
@@ -128,6 +130,8 @@ class Database:
             self._ensure_column(conn, "snapshots", "bed_locator_mode", "TEXT")
             self._ensure_column(conn, "snapshots", "aruco_id", "INTEGER")
             self._ensure_column(conn, "snapshots", "similarity_score", "REAL")
+            self._ensure_column(conn, "snapshots", "motion_px", "REAL")
+            self._ensure_column(conn, "snapshots", "sharpness", "REAL")
             self._ensure_column(conn, "snapshots", "align_dx", "INTEGER")
             self._ensure_column(conn, "snapshots", "align_dy", "INTEGER")
             self._ensure_column(
@@ -440,6 +444,8 @@ class Database:
         bed_locator_mode=None,
         aruco_id=None,
         similarity_score=None,
+        motion_px=None,
+        sharpness=None,
         align_dx=None,
         align_dy=None,
     ):
@@ -474,11 +480,13 @@ class Database:
                     bed_locator_mode,
                     aruco_id,
                     similarity_score,
+                    motion_px,
+                    sharpness,
                     align_dx,
                     align_dy,
                     error
                 )
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     job_id,
@@ -508,6 +516,8 @@ class Database:
                     bed_locator_mode,
                     aruco_id,
                     similarity_score,
+                    motion_px,
+                    sharpness,
                     align_dx,
                     align_dy,
                     error,
