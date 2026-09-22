@@ -2699,3 +2699,81 @@ dd { margin: 0; color: #d9dde2; overflow-wrap: anywhere; }
     flex: 1 1 140px;
   }
 }
+
+
+.vision-test-button {
+  margin-top: 12px;
+}
+
+.vision-test-result {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(119, 137, 151, .18);
+}
+
+.vision-test-result > strong {
+  color: #e8bf6a;
+}
+
+.vision-test-result.ok > strong {
+  color: #77dda0;
+}
+
+.vision-test-result > span {
+  margin-top: 5px;
+}
+
+.vision-test-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.vision-test-grid > div {
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid #24302b;
+  border-radius: 9px;
+  background: rgba(4, 9, 7, .3);
+}
+
+.vision-test-grid small {
+  display: block;
+  color: #6f7c76;
+  font-size: 9px;
+}
+
+.vision-test-grid b {
+  display: block;
+  margin-top: 4px;
+  overflow: hidden;
+  color: #d9e2dd;
+  font-size: 10px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+:root[data-theme="light"] .vision-test-result {
+  border-top-color: #dce6e0;
+}
+
+:root[data-theme="light"] .vision-test-grid > div {
+  border-color: #dce6e0;
+  background: #ffffff;
+}
+
+:root[data-theme="light"] .vision-test-grid b {
+  color: #27312b;
+}
+
+@media (max-width: 560px) {
+  .vision-test-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .vision-test-button {
+    width: 100%;
+  }
+}
