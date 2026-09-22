@@ -48,6 +48,9 @@ class VisionCaptureRequest(BaseModel):
     reference_similarity_threshold: float
     reference_start_layer: int
     reference_max_shift_px: int
+    motion_max_px: float
+    motion_stable_frames: int
+    sharpness_min: float
     model_roi_x: int
     model_roi_y: int
     model_roi_w: int
@@ -606,6 +609,9 @@ def _vision_capture_settings():
             "vision_reference_similarity_threshold",
             "vision_reference_start_layer",
             "vision_reference_max_shift_px",
+            "vision_motion_max_px",
+            "vision_motion_stable_frames",
+            "vision_sharpness_min",
             "vision_model_roi_x",
             "vision_model_roi_y",
             "vision_model_roi_w",
@@ -691,6 +697,33 @@ def _vision_capture_settings():
             int(
                 values.get(
                     "vision_reference_max_shift_px",
+                    "60",
+                )
+            ),
+        ),
+        "motion_max_px": max(
+            0.0,
+            float(
+                values.get(
+                    "vision_motion_max_px",
+                    "3.0",
+                )
+            ),
+        ),
+        "motion_stable_frames": max(
+            1,
+            int(
+                values.get(
+                    "vision_motion_stable_frames",
+                    "2",
+                )
+            ),
+        ),
+        "sharpness_min": max(
+            0.0,
+            float(
+                values.get(
+                    "vision_sharpness_min",
                     "60",
                 )
             ),
@@ -822,6 +855,24 @@ def update_vision_capture(payload: VisionCaptureRequest):
             detail="上一帧最大位移必须在 1 到 300 px 之间",
         )
 
+    if payload.motion_max_px < 0 or payload.motion_max_px > 100:
+        raise HTTPException(
+            status_code=400,
+            detail="运动阈值必须在 0 到 100 px 之间",
+        )
+
+    if payload.motion_stable_frames < 1 or payload.motion_stable_frames > 10:
+        raise HTTPException(
+            status_code=400,
+            detail="连续静止帧数必须在 1 到 10 之间",
+        )
+
+    if payload.sharpness_min < 0 or payload.sharpness_min > 10000:
+        raise HTTPException(
+            status_code=400,
+            detail="清晰度阈值必须在 0 到 10000 之间",
+        )
+
     bed_locator_mode = payload.bed_locator_mode.strip().lower()
 
     if bed_locator_mode not in {"reference", "aruco", "template"}:
@@ -932,6 +983,9 @@ def update_vision_capture(payload: VisionCaptureRequest):
             "vision_reference_similarity_threshold": payload.reference_similarity_threshold,
             "vision_reference_start_layer": payload.reference_start_layer,
             "vision_reference_max_shift_px": payload.reference_max_shift_px,
+            "vision_motion_max_px": payload.motion_max_px,
+            "vision_motion_stable_frames": payload.motion_stable_frames,
+            "vision_sharpness_min": payload.sharpness_min,
             "vision_model_roi_x": payload.model_roi_x,
             "vision_model_roi_y": payload.model_roi_y,
             "vision_model_roi_w": payload.model_roi_w,
