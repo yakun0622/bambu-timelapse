@@ -239,9 +239,11 @@ function eventMessage(event) {
         ? ` · 帧龄 ${d.frame_age_ms} ms`
         : "";
       const rewind = d.selection_mode === "vision"
-        ? d.bed_locator_mode === "aruco"
-          ? ` · 喷头 ${d.vision_score ?? "—"} · ArUco#${d.aruco_id ?? "—"} · 稳定${d.align_dx || d.align_dy ? ` · 对齐(${d.align_dx ?? 0}, ${d.align_dy ?? 0})px` : ""}`
-          : ` · 喷头 ${d.vision_score ?? "—"} · 热床 ${d.bed_score ?? "—"} · 稳定${d.align_dx || d.align_dy ? ` · 对齐(${d.align_dx ?? 0}, ${d.align_dy ?? 0})px` : ""}`
+        ? d.bed_locator_mode === "reference"
+          ? ` · 喷头 ${d.vision_score ?? "—"} · 上一帧相似度 ${d.similarity_score ?? "—"}${d.align_dx !== null && d.align_dx !== undefined ? ` · 对齐(${d.align_dx ?? 0}, ${d.align_dy ?? 0})px` : ""}`
+          : d.bed_locator_mode === "aruco"
+            ? ` · 喷头 ${d.vision_score ?? "—"} · ArUco#${d.aruco_id ?? "—"} · 稳定${d.align_dx || d.align_dy ? ` · 对齐(${d.align_dx ?? 0}, ${d.align_dy ?? 0})px` : ""}`
+            : ` · 喷头 ${d.vision_score ?? "—"} · 热床 ${d.bed_score ?? "—"} · 稳定${d.align_dx || d.align_dy ? ` · 对齐(${d.align_dx ?? 0}, ${d.align_dy ?? 0})px` : ""}`
         : d.selection_mode === "vision-fallback"
           ? ` · 视觉未命中${d.vision_error ? `（${d.vision_error}）` : ""} → 回退 ${d.rewind_ms ?? "—"} ms`
           : d.rewind_mode === "frame"
