@@ -643,7 +643,7 @@ def _vision_capture_settings():
     return {
         "lookback_ms": max(
             500,
-            int(values.get("vision_lookback_ms", "6000")),
+            int(values.get("vision_lookback_ms", "8000")),
         ),
         "match_threshold": min(
             1.0,
@@ -678,7 +678,7 @@ def _vision_capture_settings():
                 float(
                     values.get(
                         "vision_reference_similarity_threshold",
-                        "0.80",
+                        "0.50",
                     )
                 ),
             ),
@@ -706,7 +706,7 @@ def _vision_capture_settings():
             float(
                 values.get(
                     "vision_motion_max_px",
-                    "3.0",
+                    "2.5",
                 )
             ),
         ),
