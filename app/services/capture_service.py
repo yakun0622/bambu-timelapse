@@ -368,7 +368,9 @@ class CaptureService:
                 "motion_px": result.get("motion_px"),
                 "sharpness": result.get("sharpness"),
                 "vision_final_score": result.get("final_score"),
-                "vision_stable": True,
+                "vision_stable": not bool(
+                    result.get("quality_fallback")
+                ),
                 "bed_stable": (
                     result.get("stable")
                     if config["bed_locator_mode"] != "reference"
