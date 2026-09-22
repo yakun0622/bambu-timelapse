@@ -21,16 +21,16 @@ const savingDebug = ref(false);
 const debugMessage = ref("");
 
 const visionCapture = ref({
-  lookback_ms: 6000,
+  lookback_ms: 8000,
   match_threshold: 0.78,
   bed_match_threshold: 0.78,
   bed_locator_mode: "reference",
   aruco_id: 23,
   aruco_dictionary: "DICT_4X4_50",
-  reference_similarity_threshold: 0.80,
+  reference_similarity_threshold: 0.50,
   reference_start_layer: 2,
   reference_max_shift_px: 60,
-  motion_max_px: 3.0,
+  motion_max_px: 2.5,
   motion_stable_frames: 2,
   sharpness_min: 60,
   model_roi: { x: 80, y: 150, w: 1120, h: 520 },
@@ -772,7 +772,7 @@ onMounted(loadSettings);
             </label>
 
             <label v-if="visionCapture.bed_locator_mode === 'reference'">
-              <span>上一帧相似度阈值</span>
+              <span>上一帧相似度参考值</span>
               <div class="capture-number-field">
                 <input
                   v-model.number="visionCapture.reference_similarity_threshold"
@@ -1079,7 +1079,7 @@ onMounted(loadSettings);
               <div>
                 <strong>画面标定</strong>
                 <small>
-                  上一帧模式：框选喷头区域、喷头目标区和模型相似度 ROI；程序会从历史帧中选择与上一层最相似的画面。
+                  上一帧模式：框选喷头区域、喷头目标区和模型 ROI；程序优先选择真正静止且清晰的帧，再用上一层相似度辅助排序。
                 </small>
               </div>
 
@@ -1298,7 +1298,8 @@ onMounted(loadSettings);
               <strong>上一帧相似度定位已启用</strong>
               <span>
                 从第 {{ visionCapture.reference_start_layer }} 层开始，先筛选喷头到位的历史帧，
-                再比较上一层相似度，并要求模型连续静止、清晰度达标；最终优先选择静止区间内最清晰的一帧。
+                再检查模型是否连续静止、清晰度是否达标。静止度和清晰度优先，
+                上一帧相似度只用于候选排序，不再作为硬性拦截条件。
                 若没有完全达标的连续帧，会优先选择运动最小且更清晰的候选帧，而不是直接固定回退 500 ms。
               </span>
 
