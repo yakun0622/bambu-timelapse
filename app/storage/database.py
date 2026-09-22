@@ -154,6 +154,33 @@ class Database:
                 "ON debug_snapshots(job_id, layer)"
             )
 
+            # One-time migration: previous-frame similarity is now the
+            # primary composition-locking strategy.
+            migrated = conn.execute(
+                "SELECT value FROM app_settings "
+                "WHERE key='vision_reference_primary_v1'"
+            ).fetchone()
+
+            if not migrated:
+                now = datetime.now(timezone.utc).isoformat()
+                conn.execute(
+                    """
+                    INSERT INTO app_settings (key,value,updated_at)
+                    VALUES ('vision_bed_locator_mode','reference',?)
+                    ON CONFLICT(key) DO UPDATE SET
+                        value='reference',
+                        updated_at=excluded.updated_at
+                    """,
+                    (now,),
+                )
+                conn.execute(
+                    """
+                    INSERT INTO app_settings (key,value,updated_at)
+                    VALUES ('vision_reference_primary_v1','true',?)
+                    """,
+                    (now,),
+                )
+
     def get_app_setting(self, key, default=None):
         with self.connect() as conn:
             row = conn.execute(
