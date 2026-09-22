@@ -484,6 +484,21 @@ class YiCamera:
             None,
         )
 
+    def get_latest_rtsp_frame(self):
+        with self._rtsp_lock:
+            if self._latest_frame is None or self._latest_frame_at is None:
+                return None
+
+            return {
+                "seq": self._rtsp_frames,
+                "at": self._latest_frame_at,
+                "data": self._latest_frame,
+                "age_ms": int(
+                    (time.monotonic() - self._latest_frame_at)
+                    * 1000
+                ),
+            }
+
     def get_history_window(
         self,
         trigger_at,
