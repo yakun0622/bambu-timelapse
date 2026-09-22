@@ -10,6 +10,7 @@ from app.integrations.bambu.mqtt import mqtt_state
 from app.integrations.yi.camera import camera
 from app.services.auth_service import auth_service
 from app.services.print_service import print_service
+from app.services.timelapse_service import timelapse_service
 from app.storage.database import db
 
 
@@ -378,6 +379,45 @@ def debug_frame(job_id: int, debug_id: int):
         )
 
     return FileResponse(path)
+
+
+@router.post("/jobs/{job_id}/video/generate")
+def generate_video(job_id: int):
+    job_data = db.get_job(job_id)
+
+    if not job_data:
+        raise HTTPException(
+            status_code=404,
+            detail="任务不存在",
+        )
+
+    job_dir = Path(job_data["output_dir"])
+    images = sorted(job_dir.glob("layer_*.jpg"))
+
+    if len(images) < 2:
+        raise HTTPException(
+            status_code=409,
+            detail="至少需要 2 张抓拍图片才能生成视频",
+        )
+
+    started = timelapse_service.generate_async(
+        job_id,
+        job_dir,
+        force=True,
+    )
+
+    if not started:
+        raise HTTPException(
+            status_code=409,
+            detail="该任务的视频正在生成中",
+        )
+
+    return {
+        "ok": True,
+        "job_id": job_id,
+        "frames": len(images),
+        "message": "已开始生成延时视频",
+    }
 
 
 @router.get("/jobs/{job_id}/video")
