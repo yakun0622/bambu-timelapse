@@ -30,6 +30,9 @@ const visionCapture = ref({
   reference_similarity_threshold: 0.80,
   reference_start_layer: 2,
   reference_max_shift_px: 60,
+  motion_max_px: 3.0,
+  motion_stable_frames: 2,
+  sharpness_min: 60,
   model_roi: { x: 80, y: 150, w: 1120, h: 520 },
   stable_px: 8,
   bed_stable_px: 8,
@@ -327,6 +330,9 @@ async function saveVisionCapture() {
       reference_similarity_threshold: visionCapture.value.reference_similarity_threshold,
       reference_start_layer: visionCapture.value.reference_start_layer,
       reference_max_shift_px: visionCapture.value.reference_max_shift_px,
+      motion_max_px: visionCapture.value.motion_max_px,
+      motion_stable_frames: visionCapture.value.motion_stable_frames,
+      sharpness_min: visionCapture.value.sharpness_min,
       model_roi_x: visionCapture.value.model_roi.x,
       model_roi_y: visionCapture.value.model_roi.y,
       model_roi_w: visionCapture.value.model_roi.w,
@@ -806,6 +812,47 @@ onMounted(loadSettings);
               </div>
             </label>
 
+            <label v-if="visionCapture.bed_locator_mode === 'reference'">
+              <span>模型运动阈值</span>
+              <div class="capture-number-field">
+                <input
+                  v-model.number="visionCapture.motion_max_px"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.5"
+                />
+                <span>px</span>
+              </div>
+            </label>
+
+            <label v-if="visionCapture.bed_locator_mode === 'reference'">
+              <span>连续静止帧</span>
+              <div class="capture-number-field">
+                <input
+                  v-model.number="visionCapture.motion_stable_frames"
+                  type="number"
+                  min="1"
+                  max="10"
+                  step="1"
+                />
+                <span>帧</span>
+              </div>
+            </label>
+
+            <label v-if="visionCapture.bed_locator_mode === 'reference'">
+              <span>最低清晰度</span>
+              <div class="capture-number-field">
+                <input
+                  v-model.number="visionCapture.sharpness_min"
+                  type="number"
+                  min="0"
+                  max="10000"
+                  step="5"
+                />
+              </div>
+            </label>
+
             <label v-if="visionCapture.bed_locator_mode === 'aruco'">
               <span>ArUco Marker ID</span>
               <div class="capture-number-field">
@@ -1251,7 +1298,8 @@ onMounted(loadSettings);
               <strong>上一帧相似度定位已启用</strong>
               <span>
                 从第 {{ visionCapture.reference_start_layer }} 层开始，先筛选喷头到位的历史帧，
-                再用模型 ROI 与上一层最终照片做 ECC 平移匹配，选择相似度最高的一帧。
+                再比较上一层相似度，并要求模型连续静止、清晰度达标；最终优先选择静止区间内最清晰的一帧。
+                若没有完全达标的连续帧，会优先选择运动最小且更清晰的候选帧，而不是直接固定回退 500 ms。
               </span>
             </div>
 
