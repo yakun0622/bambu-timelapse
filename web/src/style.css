@@ -2595,3 +2595,107 @@ dd { margin: 0; color: #d9dde2; overflow-wrap: anywhere; }
     width: 100%;
   }
 }
+
+
+.job-action-row {
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.job-action-row .link-button {
+  margin-top: 0;
+}
+
+.video-action-button {
+  min-height: 40px;
+  padding: 0 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.video-preview-action {
+  border-color: #3a4652;
+  background: #e9eef3;
+  color: #12171d;
+  box-shadow: 0 5px 14px rgba(0, 0, 0, .16);
+}
+
+.video-preview-action:hover {
+  background: #f5f7f9;
+  opacity: 1;
+}
+
+.video-download-action {
+  border-color: #2b343d;
+  background: #13181e;
+  color: #cbd3da;
+}
+
+.video-download-action:hover {
+  border-color: #3a4652;
+  background: #1a2027;
+  color: #ffffff;
+  opacity: 1;
+}
+
+.video-action-icon {
+  display: inline-grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(16, 22, 28, .08);
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.video-action-icon.download {
+  font-size: 13px;
+}
+
+.video-download-action .video-action-icon {
+  background: rgba(255, 255, 255, .06);
+}
+
+:root[data-theme="light"] .video-preview-action {
+  border-color: #cfd7df;
+  background: #20262d;
+  color: #ffffff;
+  box-shadow: 0 5px 14px rgba(24, 31, 38, .14);
+}
+
+:root[data-theme="light"] .video-preview-action:hover {
+  background: #151a20;
+}
+
+:root[data-theme="light"] .video-preview-action .video-action-icon {
+  background: rgba(255, 255, 255, .12);
+}
+
+:root[data-theme="light"] .video-download-action {
+  border-color: #d4dbe2;
+  background: #ffffff;
+  color: #303942;
+}
+
+:root[data-theme="light"] .video-download-action:hover {
+  border-color: #bcc7d0;
+  background: #f5f7f9;
+  color: #182028;
+}
+
+:root[data-theme="light"] .video-download-action .video-action-icon {
+  background: #eef2f5;
+}
+
+@media (max-width: 560px) {
+  .job-action-row .video-action-button {
+    flex: 1 1 140px;
+  }
+}
