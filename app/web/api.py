@@ -11,6 +11,7 @@ from app.integrations.yi.camera import camera
 from app.services.auth_service import auth_service
 from app.services.print_service import print_service
 from app.services.timelapse_service import timelapse_service
+from app.services.vision_service import vision_selector
 from app.storage.database import db
 
 
@@ -694,6 +695,42 @@ def _vision_capture_settings():
             "w": max(1, int(values.get("vision_bed_target_w", "1280"))),
             "h": max(1, int(values.get("vision_bed_target_h", "470"))),
         },
+    }
+
+
+@router.post("/settings/vision-test")
+def test_vision():
+    latest = camera.get_latest_rtsp_frame()
+
+    if not latest:
+        raise HTTPException(
+            status_code=409,
+            detail="当前没有可用的 RTSP 实时帧",
+        )
+
+    config = _vision_capture_settings()
+    template_path = _vision_template_path()
+    bed_template_path = _vision_bed_template_path()
+
+    result = vision_selector.diagnose_frame(
+        frame_data=latest["data"],
+        head_template_path=template_path,
+        head_roi=config["roi"],
+        head_target=config["target"],
+        bed_template_path=bed_template_path,
+        bed_roi=config["bed_roi"],
+        bed_target=config["bed_target"],
+        bed_locator_mode=config["bed_locator_mode"],
+        aruco_id=config["aruco_id"],
+        aruco_dictionary=config["aruco_dictionary"],
+        head_match_threshold=config["match_threshold"],
+        bed_match_threshold=config["bed_match_threshold"],
+    )
+
+    return {
+        **result,
+        "frame_age_ms": latest["age_ms"],
+        "frame_seq": latest["seq"],
     }
 
 
