@@ -1301,6 +1301,66 @@ onMounted(loadSettings);
                 再比较上一层相似度，并要求模型连续静止、清晰度达标；最终优先选择静止区间内最清晰的一帧。
                 若没有完全达标的连续帧，会优先选择运动最小且更清晰的候选帧，而不是直接固定回退 500 ms。
               </span>
+
+              <button
+                type="button"
+                class="button secondary-button vision-test-button"
+                :disabled="testingVision"
+                @click="testVision"
+              >
+                {{ testingVision ? "正在检测…" : "测试当前画面" }}
+              </button>
+
+              <div
+                v-if="visionTestResult && visionTestResult.mode === 'reference'"
+                class="vision-test-result"
+                :class="{ ok: visionTestResult.ok }"
+              >
+                <strong>
+                  {{ visionTestResult.ok ? "当前画面可用" : "当前画面未通过" }}
+                </strong>
+                <span>{{ visionTestResult.reason }}</span>
+
+                <div class="vision-test-grid">
+                  <div>
+                    <small>喷头匹配</small>
+                    <b>{{ visionTestResult.head_score ?? "—" }}</b>
+                  </div>
+                  <div>
+                    <small>上一帧相似度</small>
+                    <b>{{ visionTestResult.similarity_score ?? "—" }}</b>
+                  </div>
+                  <div>
+                    <small>模型运动</small>
+                    <b>
+                      {{
+                        visionTestResult.motion_px !== null
+                        && visionTestResult.motion_px !== undefined
+                          ? visionTestResult.motion_px + " px"
+                          : "单帧测试"
+                      }}
+                    </b>
+                  </div>
+                  <div>
+                    <small>清晰度</small>
+                    <b>{{ visionTestResult.sharpness ?? "—" }}</b>
+                  </div>
+                  <div>
+                    <small>参考层</small>
+                    <b>{{ visionTestResult.reference_layer ?? "—" }}</b>
+                  </div>
+                  <div>
+                    <small>RTSP 帧龄</small>
+                    <b>
+                      {{
+                        visionTestResult.frame_age_ms !== undefined
+                          ? visionTestResult.frame_age_ms + " ms"
+                          : "—"
+                      }}
+                    </b>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div
