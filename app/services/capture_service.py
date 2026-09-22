@@ -67,6 +67,9 @@ class CaptureService:
                 "vision_reference_similarity_threshold",
                 "vision_reference_start_layer",
                 "vision_reference_max_shift_px",
+                "vision_motion_max_px",
+                "vision_motion_stable_frames",
+                "vision_sharpness_min",
                 "vision_model_roi_x",
                 "vision_model_roi_y",
                 "vision_model_roi_w",
@@ -160,6 +163,33 @@ class CaptureService:
                 int(
                     runtime.get(
                         "vision_reference_max_shift_px",
+                        "60",
+                    )
+                ),
+            ),
+            "motion_max_px": max(
+                0.0,
+                float(
+                    runtime.get(
+                        "vision_motion_max_px",
+                        "3.0",
+                    )
+                ),
+            ),
+            "motion_stable_frames": max(
+                1,
+                int(
+                    runtime.get(
+                        "vision_motion_stable_frames",
+                        "2",
+                    )
+                ),
+            ),
+            "sharpness_min": max(
+                0.0,
+                float(
+                    runtime.get(
+                        "vision_sharpness_min",
                         "60",
                     )
                 ),
@@ -273,6 +303,11 @@ class CaptureService:
                         max_shift_px=config[
                             "reference_max_shift_px"
                         ],
+                        motion_max_px=config["motion_max_px"],
+                        motion_stable_frames=config[
+                            "motion_stable_frames"
+                        ],
+                        sharpness_min=config["sharpness_min"],
                         align_enabled=config["align_enabled"],
                     )
                 )
@@ -320,12 +355,18 @@ class CaptureService:
                 "frame_before_trigger_ms": result[
                     "before_trigger_ms"
                 ],
-                "selection_mode": "vision",
+                "selection_mode": (
+                    "vision-clear-fallback"
+                    if result.get("quality_fallback")
+                    else "vision"
+                ),
                 "vision_score": result["head_score"],
                 "bed_score": result.get("bed_score"),
                 "bed_locator_mode": config["bed_locator_mode"],
                 "aruco_id": result.get("aruco_id"),
                 "similarity_score": result.get("similarity_score"),
+                "motion_px": result.get("motion_px"),
+                "sharpness": result.get("sharpness"),
                 "vision_final_score": result.get("final_score"),
                 "vision_stable": True,
                 "bed_stable": (
@@ -340,7 +381,7 @@ class CaptureService:
                 "bed_y": result.get("bed_y"),
                 "align_dx": result["align_dx"],
                 "align_dy": result["align_dy"],
-                "vision_error": None,
+                "vision_error": result.get("quality_reason"),
             }
 
         (
@@ -378,6 +419,8 @@ class CaptureService:
                 else None
             ),
             "similarity_score": None,
+            "motion_px": None,
+            "sharpness": None,
             "vision_final_score": None,
             "vision_stable": None,
             "bed_stable": None,
@@ -585,6 +628,8 @@ class CaptureService:
                     "bed_locator_mode": None,
                     "aruco_id": None,
                     "similarity_score": None,
+                    "motion_px": None,
+                    "sharpness": None,
                     "vision_final_score": None,
                     "vision_stable": None,
                     "bed_stable": None,
@@ -625,6 +670,8 @@ class CaptureService:
                     bed_locator_mode=result["bed_locator_mode"],
                     aruco_id=result["aruco_id"],
                     similarity_score=result["similarity_score"],
+                    motion_px=result["motion_px"],
+                    sharpness=result["sharpness"],
                     align_dx=result["align_dx"],
                     align_dy=result["align_dy"],
                 )
@@ -652,6 +699,8 @@ class CaptureService:
                         "bed_locator_mode": result["bed_locator_mode"],
                         "aruco_id": result["aruco_id"],
                         "similarity_score": result["similarity_score"],
+                        "motion_px": result["motion_px"],
+                        "sharpness": result["sharpness"],
                         "vision_final_score": result[
                             "vision_final_score"
                         ],
