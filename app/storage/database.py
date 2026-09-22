@@ -69,6 +69,7 @@ class Database:
                     bed_stable INTEGER,
                     bed_locator_mode TEXT,
                     aruco_id INTEGER,
+                    similarity_score REAL,
                     align_dx INTEGER,
                     align_dy INTEGER,
                     error TEXT,
@@ -126,6 +127,7 @@ class Database:
             self._ensure_column(conn, "snapshots", "bed_stable", "INTEGER")
             self._ensure_column(conn, "snapshots", "bed_locator_mode", "TEXT")
             self._ensure_column(conn, "snapshots", "aruco_id", "INTEGER")
+            self._ensure_column(conn, "snapshots", "similarity_score", "REAL")
             self._ensure_column(conn, "snapshots", "align_dx", "INTEGER")
             self._ensure_column(conn, "snapshots", "align_dy", "INTEGER")
             self._ensure_column(
@@ -410,6 +412,7 @@ class Database:
         bed_stable=None,
         bed_locator_mode=None,
         aruco_id=None,
+        similarity_score=None,
         align_dx=None,
         align_dy=None,
     ):
@@ -443,11 +446,12 @@ class Database:
                     bed_stable,
                     bed_locator_mode,
                     aruco_id,
+                    similarity_score,
                     align_dx,
                     align_dy,
                     error
                 )
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     job_id,
@@ -476,6 +480,7 @@ class Database:
                     ),
                     bed_locator_mode,
                     aruco_id,
+                    similarity_score,
                     align_dx,
                     align_dy,
                     error,
@@ -502,6 +507,21 @@ class Database:
             row = conn.execute(
                 "SELECT * FROM snapshots WHERE id=?",
                 (snapshot_id,),
+            ).fetchone()
+            return dict(row) if row else None
+
+    def get_previous_snapshot(self, job_id, layer):
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT * FROM snapshots
+                WHERE job_id=?
+                  AND status='SUCCESS'
+                  AND layer<?
+                ORDER BY layer DESC, id DESC
+                LIMIT 1
+                """,
+                (job_id, layer),
             ).fetchone()
             return dict(row) if row else None
 
