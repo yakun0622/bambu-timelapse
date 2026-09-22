@@ -714,7 +714,7 @@ class VisionSelector:
                 }
             )
 
-        valid = []
+        eligible = []
         fallback_pool = []
 
         for candidate in decoded:
@@ -735,11 +735,11 @@ class VisionSelector:
             candidate["similarity"] = ecc["score"]
             fallback_pool.append(candidate)
 
-            if (
-                ecc["score"] >= float(similarity_threshold)
-                and candidate["sharpness"] >= float(sharpness_min)
-            ):
-                valid.append(candidate)
+            # Similarity is no longer a hard gate. The primary goal is a
+            # stationary, sharp frame; similarity only ranks otherwise
+            # acceptable candidates.
+            if candidate["sharpness"] >= float(sharpness_min):
+                eligible.append(candidate)
 
         stable_required = max(
             1,
@@ -753,7 +753,18 @@ class VisionSelector:
         stable_runs = []
         current_run = []
 
-        for candidate in valid:
+        for candidate in eligible:
+            motion_ok = (
+                candidate["motion_px"] is not None
+                and candidate["motion_px"] <= motion_limit
+            )
+
+            if not motion_ok:
+                if len(current_run) >= stable_required:
+                    stable_runs.append(current_run)
+                current_run = []
+                continue
+
             if not current_run:
                 current_run = [candidate]
                 continue
@@ -763,12 +774,8 @@ class VisionSelector:
                 candidate["index"]
                 == previous["index"] + 1
             )
-            motion_ok = (
-                candidate["motion_px"] is not None
-                and candidate["motion_px"] <= motion_limit
-            )
 
-            if contiguous and motion_ok:
+            if contiguous:
                 current_run.append(candidate)
             else:
                 if len(current_run) >= stable_required:
@@ -784,22 +791,31 @@ class VisionSelector:
                 for run in stable_runs
             )
 
+            # Prefer the longest truly stationary sequence first. Inside that
+            # sequence, prefer minimum motion, then maximum sharpness, and use
+            # previous-frame similarity only as the final tie-breaker.
             best_run = max(
                 stable_runs,
                 key=lambda run: (
                     len(run),
-                    max(
-                        item["similarity"]
+                    -min(
+                        item["motion_px"]
+                        if item["motion_px"] is not None
+                        else float("inf")
                         for item in run
                     ),
+                    max(item["sharpness"] for item in run),
                 ),
             )
 
-            best = max(
+            best = min(
                 best_run,
                 key=lambda item: (
-                    item["sharpness"],
-                    item["similarity"],
+                    item["motion_px"]
+                    if item["motion_px"] is not None
+                    else float("inf"),
+                    -item["sharpness"],
+                    -item["similarity"],
                 ),
             )
             quality_fallback = False
@@ -807,8 +823,9 @@ class VisionSelector:
             stable_count = len(best_run)
 
         elif fallback_pool:
-            # Do not fall straight back to a fixed time offset: choose the
-            # least-moving, sharpest candidate we actually observed.
+            # No fully stationary sequence was found. Still avoid the old
+            # fixed-time fallback and choose the least-moving, sharpest
+            # candidate observed in the history window.
             best = min(
                 fallback_pool,
                 key=lambda item: (
@@ -823,10 +840,33 @@ class VisionSelector:
             )
             quality_fallback = True
             stable_count = 0
+
+            details = []
+            if best["sharpness"] < float(sharpness_min):
+                details.append(
+                    f"清晰度 {best['sharpness']:.2f} < "
+                    f"{float(sharpness_min):.2f}"
+                )
+            if (
+                best["motion_px"] is None
+                or best["motion_px"] > motion_limit
+            ):
+                motion_text = (
+                    "未知"
+                    if best["motion_px"] is None
+                    else f"{best['motion_px']:.2f}px"
+                )
+                details.append(
+                    f"运动 {motion_text} > {motion_limit:.2f}px"
+                )
+
             quality_reason = (
                 "未找到满足静止/清晰度条件的连续帧，"
                 "已选择历史窗口中运动最小且更清晰的候选帧"
             )
+            if details:
+                quality_reason += "（" + "；".join(details) + "）"
+
         else:
             head_text = (
                 f"喷头最高 {diagnostic['max_head_score']:.4f}"
@@ -843,6 +883,10 @@ class VisionSelector:
                 f"{head_text}，喷头目标区 {diagnostic['head_target']} 帧；"
                 f"{similarity_text}",
             )
+
+        similarity_below_threshold = (
+            best["similarity"] < float(similarity_threshold)
+        )
 
         frame_data = best["item"]["data"]
         if align_enabled:
@@ -866,6 +910,7 @@ class VisionSelector:
                 best["similarity"],
                 4,
             ),
+            "similarity_below_threshold": similarity_below_threshold,
             "motion_px": (
                 round(best["motion_px"], 2)
                 if best["motion_px"] is not None
