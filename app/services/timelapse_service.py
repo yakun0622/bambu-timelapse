@@ -8,14 +8,37 @@ from app.storage.database import db
 
 
 class TimelapseService:
-    def generate_async(self, job_id: int, job_dir: Path):
-        if not settings.auto_generate_video:
-            return
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._running = set()
+
+    def generate_async(
+        self,
+        job_id: int,
+        job_dir: Path,
+        force: bool = False,
+    ):
+        if not force and not settings.auto_generate_video:
+            return False
+
+        with self._lock:
+            if job_id in self._running:
+                return False
+            self._running.add(job_id)
+
         threading.Thread(
-            target=self._generate,
+            target=self._generate_guarded,
             args=(job_id, job_dir),
             daemon=True,
         ).start()
+        return True
+
+    def _generate_guarded(self, job_id: int, job_dir: Path):
+        try:
+            self._generate(job_id, job_dir)
+        finally:
+            with self._lock:
+                self._running.discard(job_id)
 
     def _generate(self, job_id: int, job_dir: Path):
         images = sorted(job_dir.glob("layer_*.jpg"))
