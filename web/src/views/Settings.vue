@@ -39,6 +39,8 @@ const visionCapture = ref({
 });
 const savingVision = ref(false);
 const visionMessage = ref("");
+const testingVision = ref(false);
+const visionTestResult = ref(null);
 
 const calibrationImage = ref(null);
 const calibrationImageRef = ref(null);
@@ -279,6 +281,27 @@ async function saveBedTemplate() {
     visionMessage.value = error.message || "生成热床模板失败";
   } finally {
     savingBedTemplate.value = false;
+  }
+}
+
+async function testVision() {
+  testingVision.value = true;
+  visionTestResult.value = null;
+  visionMessage.value = "";
+
+  try {
+    // Ensure the backend tests the same parameters currently shown on screen.
+    await saveVisionCapture();
+    visionTestResult.value = await api("/api/settings/vision-test", {
+      method: "POST"
+    });
+  } catch (error) {
+    visionTestResult.value = {
+      ok: false,
+      reason: error.message || "视觉测试失败"
+    };
+  } finally {
+    testingVision.value = false;
   }
 }
 
@@ -1119,6 +1142,90 @@ onMounted(loadSettings);
                 当前使用 {{ visionCapture.aruco_dictionary }} /
                 ID {{ visionCapture.aruco_id }}。把打印好的 Marker 固定在随热床移动且长期可见的位置即可。
               </span>
+
+              <button
+                type="button"
+                class="button secondary-button vision-test-button"
+                :disabled="testingVision"
+                @click="testVision"
+              >
+                {{ testingVision ? "正在检测…" : "测试当前画面" }}
+              </button>
+
+              <div
+                v-if="visionTestResult"
+                class="vision-test-result"
+                :class="{ ok: visionTestResult.ok }"
+              >
+                <strong>
+                  {{ visionTestResult.ok ? "当前画面可用" : "当前画面未通过" }}
+                </strong>
+                <span>{{ visionTestResult.reason }}</span>
+
+                <div v-if="visionTestResult.head" class="vision-test-grid">
+                  <div>
+                    <small>喷头</small>
+                    <b>
+                      {{
+                        visionTestResult.head.detected
+                          ? "已识别 " + (visionTestResult.head.score ?? "—")
+                          : "未识别"
+                      }}
+                    </b>
+                  </div>
+                  <div>
+                    <small>喷头目标区</small>
+                    <b>{{ visionTestResult.head.in_target ? "是" : "否" }}</b>
+                  </div>
+                  <div>
+                    <small>ArUco #{{ visionCapture.aruco_id }}</small>
+                    <b>
+                      {{
+                        visionTestResult.bed?.detected
+                          ? "已识别"
+                          : "未识别"
+                      }}
+                    </b>
+                  </div>
+                  <div>
+                    <small>热床目标区</small>
+                    <b>{{ visionTestResult.bed?.in_target ? "是" : "否" }}</b>
+                  </div>
+                  <div>
+                    <small>Marker 中心</small>
+                    <b>
+                      {{
+                        visionTestResult.bed?.center_x !== null
+                        && visionTestResult.bed?.center_x !== undefined
+                          ? visionTestResult.bed.center_x
+                            + ", "
+                            + visionTestResult.bed.center_y
+                          : "—"
+                      }}
+                    </b>
+                  </div>
+                  <div>
+                    <small>Marker 尺寸</small>
+                    <b>
+                      {{
+                        visionTestResult.bed?.marker_size_px
+                          ? visionTestResult.bed.marker_size_px + " px"
+                          : "—"
+                      }}
+                    </b>
+                  </div>
+                  <div>
+                    <small>RTSP 帧龄</small>
+                    <b>
+                      {{
+                        visionTestResult.frame_age_ms !== undefined
+                          ? visionTestResult.frame_age_ms + " ms"
+                          : "—"
+                      }}
+                    </b>
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div
