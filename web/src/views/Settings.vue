@@ -24,9 +24,13 @@ const visionCapture = ref({
   lookback_ms: 6000,
   match_threshold: 0.78,
   bed_match_threshold: 0.78,
-  bed_locator_mode: "aruco",
+  bed_locator_mode: "reference",
   aruco_id: 23,
   aruco_dictionary: "DICT_4X4_50",
+  reference_similarity_threshold: 0.80,
+  reference_start_layer: 2,
+  reference_max_shift_px: 60,
+  model_roi: { x: 80, y: 150, w: 1120, h: 520 },
   stable_px: 8,
   bed_stable_px: 8,
   stable_frames: 2,
@@ -74,7 +78,8 @@ async function loadSettings() {
     roi: { ...settings.value.capture.vision_capture.roi },
     target: { ...settings.value.capture.vision_capture.target },
     bed_roi: { ...settings.value.capture.vision_capture.bed_roi },
-    bed_target: { ...settings.value.capture.vision_capture.bed_target }
+    bed_target: { ...settings.value.capture.vision_capture.bed_target },
+    model_roi: { ...settings.value.capture.vision_capture.model_roi }
   };
 
   templateBox.value = {
@@ -210,6 +215,8 @@ function onCalibrationPointerUp(event) {
     visionCapture.value.bed_target = box;
   } else if (drawMode.value === "bed_template") {
     bedTemplateBox.value = box;
+  } else if (drawMode.value === "model_roi") {
+    visionCapture.value.model_roi = box;
   }
 
   draftBox.value = null;
@@ -317,6 +324,13 @@ async function saveVisionCapture() {
       bed_locator_mode: visionCapture.value.bed_locator_mode,
       aruco_id: visionCapture.value.aruco_id,
       aruco_dictionary: visionCapture.value.aruco_dictionary,
+      reference_similarity_threshold: visionCapture.value.reference_similarity_threshold,
+      reference_start_layer: visionCapture.value.reference_start_layer,
+      reference_max_shift_px: visionCapture.value.reference_max_shift_px,
+      model_roi_x: visionCapture.value.model_roi.x,
+      model_roi_y: visionCapture.value.model_roi.y,
+      model_roi_w: visionCapture.value.model_roi.w,
+      model_roi_h: visionCapture.value.model_roi.h,
       stable_px: visionCapture.value.stable_px,
       bed_stable_px: visionCapture.value.bed_stable_px,
       stable_frames: visionCapture.value.stable_frames,
@@ -350,7 +364,8 @@ async function saveVisionCapture() {
       roi: { ...response.vision_capture.roi },
       target: { ...response.vision_capture.target },
       bed_roi: { ...response.vision_capture.bed_roi },
-      bed_target: { ...response.vision_capture.bed_target }
+      bed_target: { ...response.vision_capture.bed_target },
+      model_roi: { ...response.vision_capture.model_roi }
     };
     visionMessage.value = "视觉参数已保存";
     await loadSettings();
@@ -739,14 +754,56 @@ onMounted(loadSettings);
             </label>
 
             <label>
-              <span>热床定位方式</span>
+              <span>构图定位方式</span>
               <select
                 v-model="visionCapture.bed_locator_mode"
                 class="vision-select"
               >
-                <option value="aruco">ArUco 标记</option>
-                <option value="template">模板匹配</option>
+                <option value="reference">上一帧相似度（推荐）</option>
+                <option value="aruco">ArUco 标记（备用）</option>
+                <option value="template">热床模板（备用）</option>
               </select>
+            </label>
+
+            <label v-if="visionCapture.bed_locator_mode === 'reference'">
+              <span>上一帧相似度阈值</span>
+              <div class="capture-number-field">
+                <input
+                  v-model.number="visionCapture.reference_similarity_threshold"
+                  type="number"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                />
+              </div>
+            </label>
+
+            <label v-if="visionCapture.bed_locator_mode === 'reference'">
+              <span>开始匹配层</span>
+              <div class="capture-number-field">
+                <input
+                  v-model.number="visionCapture.reference_start_layer"
+                  type="number"
+                  min="2"
+                  max="100"
+                  step="1"
+                />
+                <span>层</span>
+              </div>
+            </label>
+
+            <label v-if="visionCapture.bed_locator_mode === 'reference'">
+              <span>允许最大位移</span>
+              <div class="capture-number-field">
+                <input
+                  v-model.number="visionCapture.reference_max_shift_px"
+                  type="number"
+                  min="1"
+                  max="300"
+                  step="1"
+                />
+                <span>px</span>
+              </div>
             </label>
 
             <label v-if="visionCapture.bed_locator_mode === 'aruco'">
@@ -836,7 +893,13 @@ onMounted(loadSettings);
                   v-model="visionCapture.align_enabled"
                   type="checkbox"
                 />
-                <span>根据热床锚点进行平移校正</span>
+                <span>
+                  {{
+                    visionCapture.bed_locator_mode === "reference"
+                      ? "根据上一帧 ECC 位移自动校正"
+                      : "根据热床锚点进行平移校正"
+                  }}
+                </span>
               </div>
             </label>
 
@@ -907,7 +970,29 @@ onMounted(loadSettings);
             </div>
           </div>
 
-          <div class="vision-region-block">
+          <div
+            v-if="visionCapture.bed_locator_mode === 'reference'"
+            class="vision-region-block"
+          >
+            <div>
+              <strong>模型相似度 ROI</strong>
+              <small>
+                只比较这个区域与上一层最终照片。尽量覆盖模型主体，避开喷头和过多固定背景。
+              </small>
+            </div>
+
+            <div class="vision-region-grid">
+              <label><span>X</span><input v-model.number="visionCapture.model_roi.x" type="number" min="0" /></label>
+              <label><span>Y</span><input v-model.number="visionCapture.model_roi.y" type="number" min="0" /></label>
+              <label><span>W</span><input v-model.number="visionCapture.model_roi.w" type="number" min="1" /></label>
+              <label><span>H</span><input v-model.number="visionCapture.model_roi.h" type="number" min="1" /></label>
+            </div>
+          </div>
+
+          <div
+            v-if="visionCapture.bed_locator_mode !== 'reference'"
+            class="vision-region-block"
+          >
             <div>
               <strong>热床定位搜索 ROI</strong>
               <small>
@@ -923,7 +1008,10 @@ onMounted(loadSettings);
             </div>
           </div>
 
-          <div class="vision-region-block">
+          <div
+            v-if="visionCapture.bed_locator_mode !== 'reference'"
+            class="vision-region-block"
+          >
             <div>
               <strong>热床目标区域</strong>
               <small>
@@ -944,7 +1032,7 @@ onMounted(loadSettings);
               <div>
                 <strong>画面标定</strong>
                 <small>
-                  直接拖框设置喷头与热床定位区域。ArUco 模式无需生成热床模板，只需让 ID 23 标记进入热床 ROI。
+                  上一帧模式：框选喷头区域、喷头目标区和模型相似度 ROI；程序会从历史帧中选择与上一层最相似的画面。
                 </small>
               </div>
 
@@ -996,6 +1084,15 @@ onMounted(loadSettings);
               </div>
 
               <div
+                v-if="visionCapture.bed_locator_mode === 'reference'"
+                class="vision-box model-roi"
+                :style="boxStyle(visionCapture.model_roi)"
+              >
+                <span>模型 ROI</span>
+              </div>
+
+              <div
+                v-if="visionCapture.bed_locator_mode !== 'reference'"
                 class="vision-box bed-roi"
                 :style="boxStyle(visionCapture.bed_roi)"
               >
@@ -1003,6 +1100,7 @@ onMounted(loadSettings);
               </div>
 
               <div
+                v-if="visionCapture.bed_locator_mode !== 'reference'"
                 class="vision-box bed-target"
                 :style="boxStyle(visionCapture.bed_target)"
               >
@@ -1060,6 +1158,18 @@ onMounted(loadSettings);
               </button>
 
               <button
+                v-if="visionCapture.bed_locator_mode === 'reference'"
+                type="button"
+                class="button secondary-button"
+                :class="{ active: drawMode === 'model_roi' }"
+                :disabled="!calibrationImage"
+                @click="startDraw('model_roi')"
+              >
+                框选模型 ROI
+              </button>
+
+              <button
+                v-if="visionCapture.bed_locator_mode !== 'reference'"
                 type="button"
                 class="button secondary-button"
                 :class="{ active: drawMode === 'bed_roi' }"
@@ -1070,6 +1180,7 @@ onMounted(loadSettings);
               </button>
 
               <button
+                v-if="visionCapture.bed_locator_mode !== 'reference'"
                 type="button"
                 class="button secondary-button"
                 :class="{ active: drawMode === 'bed_target' }"
@@ -1134,7 +1245,18 @@ onMounted(loadSettings);
             </div>
 
             <div
-              v-else
+              v-if="visionCapture.bed_locator_mode === 'reference'"
+              class="aruco-hint reference-hint"
+            >
+              <strong>上一帧相似度定位已启用</strong>
+              <span>
+                从第 {{ visionCapture.reference_start_layer }} 层开始，先筛选喷头到位的历史帧，
+                再用模型 ROI 与上一层最终照片做 ECC 平移匹配，选择相似度最高的一帧。
+              </span>
+            </div>
+
+            <div
+              v-if="visionCapture.bed_locator_mode === 'aruco'"
               class="aruco-hint"
             >
               <strong>ArUco 热床定位已启用</strong>
