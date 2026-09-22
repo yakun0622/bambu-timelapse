@@ -243,7 +243,7 @@ function eventMessage(event) {
           ? ` · 喷头 ${d.vision_score ?? "—"} · ArUco#${d.aruco_id ?? "—"} · 稳定${d.align_dx || d.align_dy ? ` · 对齐(${d.align_dx ?? 0}, ${d.align_dy ?? 0})px` : ""}`
           : ` · 喷头 ${d.vision_score ?? "—"} · 热床 ${d.bed_score ?? "—"} · 稳定${d.align_dx || d.align_dy ? ` · 对齐(${d.align_dx ?? 0}, ${d.align_dy ?? 0})px` : ""}`
         : d.selection_mode === "vision-fallback"
-          ? ` · 视觉未命中 → 回退 ${d.rewind_ms ?? "—"} ms`
+          ? ` · 视觉未命中${d.vision_error ? `（${d.vision_error}）` : ""} → 回退 ${d.rewind_ms ?? "—"} ms`
           : d.rewind_mode === "frame"
             && d.frame_offset !== null
             && d.frame_offset !== undefined
