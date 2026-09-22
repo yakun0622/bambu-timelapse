@@ -185,6 +185,39 @@ class Database:
                     (now,),
                 )
 
+            static_priority = conn.execute(
+                "SELECT value FROM app_settings "
+                "WHERE key='vision_static_priority_v1'"
+            ).fetchone()
+
+            if not static_priority:
+                now = datetime.now(timezone.utc).isoformat()
+                defaults = {
+                    "vision_lookback_ms": "8000",
+                    "vision_reference_similarity_threshold": "0.50",
+                    "vision_motion_max_px": "2.5",
+                    "vision_motion_stable_frames": "2",
+                    "vision_sharpness_min": "60",
+                }
+                for key, value in defaults.items():
+                    conn.execute(
+                        """
+                        INSERT INTO app_settings (key,value,updated_at)
+                        VALUES (?,?,?)
+                        ON CONFLICT(key) DO UPDATE SET
+                            value=excluded.value,
+                            updated_at=excluded.updated_at
+                        """,
+                        (key, value, now),
+                    )
+                conn.execute(
+                    """
+                    INSERT INTO app_settings (key,value,updated_at)
+                    VALUES ('vision_static_priority_v1','true',?)
+                    """,
+                    (now,),
+                )
+
     def get_app_setting(self, key, default=None):
         with self.connect() as conn:
             row = conn.execute(
