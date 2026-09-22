@@ -795,6 +795,84 @@ def test_vision():
     template_path = _vision_template_path()
     bed_template_path = _vision_bed_template_path()
 
+    if config["bed_locator_mode"] == "reference":
+        current = print_service.status()
+        job_id = current.get("job_id")
+        reference = (
+            db.get_latest_snapshot(job_id)
+            if job_id
+            else None
+        )
+
+        if not reference or not reference.get("file_path"):
+            return {
+                "ok": False,
+                "mode": "reference",
+                "reason": "当前任务还没有上一张成功抓拍，暂时无法测试上一帧相似度",
+                "frame_age_ms": latest["age_ms"],
+                "frame_seq": latest["seq"],
+            }
+
+        result, error = vision_selector.select_reference(
+            history=[
+                {
+                    "seq": latest["seq"],
+                    "at": latest["at"],
+                    "data": latest["data"],
+                }
+            ],
+            trigger_at=latest["at"],
+            reference_path=reference["file_path"],
+            model_roi=config["model_roi"],
+            head_template_path=template_path,
+            head_roi=config["roi"],
+            head_target=config["target"],
+            head_match_threshold=config["match_threshold"],
+            similarity_threshold=config[
+                "reference_similarity_threshold"
+            ],
+            max_shift_px=config[
+                "reference_max_shift_px"
+            ],
+            motion_max_px=config["motion_max_px"],
+            motion_stable_frames=1,
+            sharpness_min=config["sharpness_min"],
+            align_enabled=False,
+        )
+
+        return {
+            "ok": bool(result),
+            "mode": "reference",
+            "reason": (
+                "当前画面满足上一帧相似度与清晰度条件"
+                if result
+                else error
+            ),
+            "head_score": (
+                result.get("head_score")
+                if result
+                else None
+            ),
+            "similarity_score": (
+                result.get("similarity_score")
+                if result
+                else None
+            ),
+            "motion_px": (
+                result.get("motion_px")
+                if result
+                else None
+            ),
+            "sharpness": (
+                result.get("sharpness")
+                if result
+                else None
+            ),
+            "reference_layer": reference.get("layer"),
+            "frame_age_ms": latest["age_ms"],
+            "frame_seq": latest["seq"],
+        }
+
     result = vision_selector.diagnose_frame(
         frame_data=latest["data"],
         head_template_path=template_path,
@@ -812,6 +890,7 @@ def test_vision():
 
     return {
         **result,
+        "mode": config["bed_locator_mode"],
         "frame_age_ms": latest["age_ms"],
         "frame_seq": latest["seq"],
     }
