@@ -10,6 +10,7 @@ const previewFps = ref(5);
 const previewLoop = ref(true);
 const generatingVideo = ref(false);
 const videoMessage = ref("");
+const videoPreviewOpen = ref(false);
 
 let previewTimer = null;
 let refreshTimer = null;
@@ -79,6 +80,7 @@ async function load() {
 
 async function open(job) {
   stopPreview();
+  videoPreviewOpen.value = false;
   selected.value = await api(`/api/jobs/${job.id}`);
   previewIndex.value = 0;
 }
@@ -174,6 +176,16 @@ function changeFps() {
   if (previewPlaying.value) schedulePreview();
 }
 
+function openVideoPreview() {
+  if (!selected.value?.video_path) return;
+  stopPreview();
+  videoPreviewOpen.value = true;
+}
+
+function closeVideoPreview() {
+  videoPreviewOpen.value = false;
+}
+
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -232,6 +244,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   stopPreview();
+  videoPreviewOpen.value = false;
   clearInterval(refreshTimer);
 });
 </script>
@@ -310,28 +323,31 @@ onBeforeUnmount(() => {
           </dl>
 
           <div class="job-action-row">
+            <button
+              v-if="selected.video_path"
+              type="button"
+              class="button"
+              @click="openVideoPreview"
+            >
+              预览延时视频
+            </button>
+
             <a
               v-if="selected.video_path"
-              class="button link-button"
+              class="button link-button secondary-button"
               :href="`/api/jobs/${selected.id}/video`"
             >
-              下载延时视频
+              下载视频
             </a>
 
             <button
-              v-if="successShots.length >= 2"
+              v-else-if="successShots.length >= 2"
               type="button"
               class="button secondary-button"
               :disabled="generatingVideo"
               @click="generateVideo"
             >
-              {{
-                generatingVideo
-                  ? "正在生成…"
-                  : selected.video_path
-                    ? "重新生成视频"
-                    : "手动生成视频"
-              }}
+              {{ generatingVideo ? "正在生成…" : "手动生成视频" }}
             </button>
 
             <span
@@ -514,6 +530,52 @@ onBeforeUnmount(() => {
           请选择一个历史任务查看详情。
         </p>
       </article>
+    </div>
+    <div
+      v-if="videoPreviewOpen && selected?.video_path"
+      class="video-preview-modal"
+      @click.self="closeVideoPreview"
+    >
+      <div class="video-preview-dialog">
+        <div class="video-preview-dialog-head">
+          <div>
+            <small>延时视频预览</small>
+            <strong>{{ selected.name }}</strong>
+          </div>
+
+          <button
+            type="button"
+            class="video-preview-close"
+            aria-label="关闭视频预览"
+            @click="closeVideoPreview"
+          >
+            ×
+          </button>
+        </div>
+
+        <div class="video-preview-player">
+          <video
+            :src="`/api/jobs/${selected.id}/video`"
+            controls
+            autoplay
+            playsinline
+          ></video>
+        </div>
+
+        <div class="video-preview-dialog-actions">
+          <span>
+            {{ selected.frame_count }} 张抓拍 ·
+            {{ selected.total_layers || "—" }} 层
+          </span>
+
+          <a
+            class="button link-button"
+            :href="`/api/jobs/${selected.id}/video`"
+          >
+            下载视频
+          </a>
+        </div>
+      </div>
     </div>
   </section>
 </template>
