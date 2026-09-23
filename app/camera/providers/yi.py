@@ -19,3 +19,12 @@ class YiCameraProvider(CameraProvider):
 
     def get_frame(self):
         return legacy_camera.get_latest_rtsp_frame()
+
+    def get_history_window(self, *args, **kwargs):
+        return legacy_camera.get_history_window(*args, **kwargs)
+
+    def capture_history_frame(self, *args, **kwargs):
+        return legacy_camera.capture_history_frame(*args, **kwargs)
+
+    def test(self):
+        return legacy_camera.test()
