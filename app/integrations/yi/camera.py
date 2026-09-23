@@ -133,9 +133,12 @@ class CameraSource:
             path = "/" + path
 
         auth = ""
-        if settings.yi_user:
-            user = quote(settings.yi_user, safe="")
-            password = quote(settings.yi_password, safe="")
+        config = self._active_config()
+        yi_user = config.get("username") or settings.yi_user
+        yi_password = config.get("password") or settings.yi_password
+        if yi_user:
+            user = quote(str(yi_user), safe="")
+            password = quote(str(yi_password), safe="")
             auth = f"{user}:{password}@"
 
         return (
@@ -172,7 +175,11 @@ class CameraSource:
         )
 
     def start(self):
-        source = settings.capture_source
+        source = (
+            "rtsp"
+            if self.camera_type == "rtsp"
+            else settings.capture_source
+        )
 
         if (
             source not in {"auto", "rtsp"}
@@ -441,7 +448,11 @@ class CameraSource:
         rewind_frames=None,
         rewind_ms=None,
     ):
-        source = settings.capture_source
+        source = (
+            "rtsp"
+            if self.camera_type == "rtsp"
+            else settings.capture_source
+        )
 
         if source not in {"auto", "rtsp", "http"}:
             source = "auto"
