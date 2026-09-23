@@ -15,6 +15,21 @@ class Settings:
     bambu_access_token: str = os.getenv("BAMBU_ACCESS_TOKEN", "")
     bambu_device_id: str = os.getenv("BAMBU_DEVICE_ID", "")
 
+    camera_type: str = os.getenv(
+        "CAMERA_TYPE",
+        "yi",
+    ).strip().lower()
+    camera_name: str = os.getenv(
+        "CAMERA_NAME",
+        "Camera",
+    ).strip() or "Camera"
+    camera_rtsp_url: str = os.getenv(
+        "CAMERA_RTSP_URL",
+        "",
+    ).strip()
+
+    # Yi/yi-hack compatibility settings. Existing deployments continue to
+    # work unchanged; generic RTSP sources can ignore these values.
     yi_ip: str = os.getenv("YI_IP", "")
     yi_user: str = os.getenv("YI_USER", "admin")
     yi_password: str = os.getenv("YI_PASSWORD", "")
