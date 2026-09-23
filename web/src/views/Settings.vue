@@ -454,31 +454,61 @@ onMounted(loadSettings);
 
       <article class="card">
         <div class="card-title">
-          <span>小蚁摄像头</span>
-          <span>Yi Hack</span>
+          <span>摄像头</span>
+          <span>
+            {{
+              settings.camera.type === "rtsp"
+                ? "Generic RTSP"
+                : "Yi Hack"
+            }}
+          </span>
         </div>
 
         <dl>
-          <dt>IP 地址</dt>
-          <dd>{{ settings.camera.ip }}</dd>
+          <dt>名称</dt>
+          <dd>{{ settings.camera.name || "Camera" }}</dd>
 
-          <dt>用户名</dt>
-          <dd>{{ settings.camera.user }}</dd>
-
-          <dt>密码</dt>
+          <dt>类型</dt>
           <dd>
             {{
-              settings.camera.password_configured
-                ? "已配置"
-                : "未配置"
+              settings.camera.type === "rtsp"
+                ? "通用 RTSP"
+                : "小蚁 / yi-hack"
             }}
           </dd>
+
+          <template v-if="settings.camera.type === 'yi'">
+            <dt>IP 地址</dt>
+            <dd>{{ settings.camera.ip || "—" }}</dd>
+
+            <dt>用户名</dt>
+            <dd>{{ settings.camera.user || "—" }}</dd>
+
+            <dt>密码</dt>
+            <dd>
+              {{
+                settings.camera.password_configured
+                  ? "已配置"
+                  : "未配置"
+              }}
+            </dd>
+
+            <dt>RTSP 端口</dt>
+            <dd>{{ settings.camera.rtsp_port }}</dd>
+
+            <dt>RTSP 路径</dt>
+            <dd>{{ settings.camera.rtsp_path }}</dd>
+          </template>
 
           <dt>抓拍来源</dt>
           <dd>
             {{
               settings.camera.capture_source === "auto"
-                ? "RTSP 优先 / HTTP 回退"
+                ? (
+                    settings.camera.type === "yi"
+                      ? "RTSP 优先 / HTTP 回退"
+                      : "RTSP"
+                  )
                 : settings.camera.capture_source.toUpperCase()
             }}
           </dd>
@@ -486,12 +516,14 @@ onMounted(loadSettings);
           <dt>RTSP 地址</dt>
           <dd>{{ settings.camera.rtsp_display_url }}</dd>
 
-          <dt>RTSP 端口</dt>
-          <dd>{{ settings.camera.rtsp_port }}</dd>
-
-          <dt>RTSP 路径</dt>
-          <dd>{{ settings.camera.rtsp_path }}</dd>
+          <dt>配置状态</dt>
+          <dd>{{ settings.camera.configured ? "已配置" : "未配置" }}</dd>
         </dl>
+
+        <p class="settings-hint" v-if="settings.camera.type === 'rtsp'">
+          通用 RTSP 可直接接入旧 Android 手机、网络摄像头或其他 RTSP Server。
+          修改 .env 中 CAMERA_RTSP_URL 后重启容器即可。
+        </p>
       </article>
 
       <article class="card">
@@ -597,9 +629,8 @@ onMounted(loadSettings);
               >
                 <label>视觉定位</label>
                 <small>
-                  从 RTSP 历史帧中同时识别喷头和热床锚点，只有两者都进入目标区域并连续稳定才会选中。
-                  可按热床锚点自动平移对齐画面；如果没有找到符合条件的画面，会自动回退到“按时间”策略，
-                  使用 {{ captureTiming.milliseconds }} ms。
+                  从 RTSP 历史帧中筛选喷头到位的候选帧，并结合模型静止度、清晰度和上一帧相似度选择最佳画面。
+                  如果没有找到合格帧，会优先选择运动更小、更清晰的候选；必要时再回退到按时间策略。
                 </small>
               </div>
               <div class="capture-config-actions">
