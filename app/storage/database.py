@@ -111,6 +111,18 @@ class Database:
                     file_path TEXT NOT NULL,
                     captured_at TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS cameras (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    type TEXT NOT NULL,
+                    rtsp_url TEXT,
+                    username TEXT,
+                    password TEXT,
+                    enabled INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
                 """
             )
 
@@ -157,6 +169,10 @@ class Database:
                 "CREATE INDEX IF NOT EXISTS idx_debug_snapshots_job_layer "
                 "ON debug_snapshots(job_id, layer)"
             )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_cameras_enabled "
+                "ON cameras(enabled)"
+            )
 
             # One-time migration: previous-frame similarity is now the
             # primary composition-locking strategy.
@@ -181,6 +197,61 @@ class Database:
                     """
                     INSERT INTO app_settings (key,value,updated_at)
                     VALUES ('vision_reference_primary_v1','true',?)
+                    """,
+                    (now,),
+                )
+
+            camera_seeded = conn.execute(
+                "SELECT value FROM app_settings "
+                "WHERE key='camera_config_seed_v1'"
+            ).fetchone()
+
+            if not camera_seeded:
+                now = datetime.now(timezone.utc).isoformat()
+                existing_camera = conn.execute(
+                    "SELECT id FROM cameras LIMIT 1"
+                ).fetchone()
+                if not existing_camera:
+                    camera_type = settings.camera_type
+                    if camera_type not in {"yi", "rtsp"}:
+                        camera_type = "yi"
+                    rtsp_url = (
+                        settings.camera_rtsp_url
+                        or settings.yi_rtsp_url
+                        or None
+                    )
+                    conn.execute(
+                        """
+                        INSERT INTO cameras
+                        (name,type,rtsp_url,username,password,enabled,created_at,updated_at)
+                        VALUES (?,?,?,?,?,1,?,?)
+                        """,
+                        (
+                            (
+                                "小蚁摄像头"
+                                if camera_type == "yi"
+                                else settings.camera_name
+                            ),
+                            camera_type,
+                            rtsp_url,
+                            (
+                                settings.yi_user
+                                if camera_type == "yi"
+                                else None
+                            ),
+                            (
+                                settings.yi_password
+                                if camera_type == "yi"
+                                else None
+                            ),
+                            now,
+                            now,
+                        ),
+                    )
+                conn.execute(
+                    """
+                    INSERT INTO app_settings (key,value,updated_at)
+                    VALUES ('camera_config_seed_v1','true',?)
                     """,
                     (now,),
                 )
@@ -217,6 +288,122 @@ class Database:
                     """,
                     (now,),
                 )
+
+    def list_cameras(self):
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id,name,type,rtsp_url,username,
+                       CASE WHEN password IS NOT NULL AND password != '' THEN 1 ELSE 0 END
+                           AS password_configured,
+                       enabled,created_at,updated_at
+                FROM cameras
+                ORDER BY enabled DESC, id ASC
+                """
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def get_camera(self, camera_id):
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM cameras WHERE id=?",
+                (camera_id,),
+            ).fetchone()
+            return dict(row) if row else None
+
+    def get_enabled_camera(self):
+        with self.connect() as conn:
+            row = conn.execute(
+                """
+                SELECT * FROM cameras
+                WHERE enabled=1
+                ORDER BY id ASC
+                LIMIT 1
+                """
+            ).fetchone()
+            return dict(row) if row else None
+
+    def create_camera(
+        self,
+        name,
+        camera_type,
+        rtsp_url=None,
+        username=None,
+        password=None,
+        enabled=True,
+    ):
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock, self.connect() as conn:
+            if enabled:
+                conn.execute("UPDATE cameras SET enabled=0")
+            cur = conn.execute(
+                """
+                INSERT INTO cameras
+                (name,type,rtsp_url,username,password,enabled,created_at,updated_at)
+                VALUES (?,?,?,?,?,?,?,?)
+                """,
+                (
+                    name,
+                    camera_type,
+                    rtsp_url,
+                    username,
+                    password,
+                    int(bool(enabled)),
+                    now,
+                    now,
+                ),
+            )
+            return cur.lastrowid
+
+    def update_camera(self, camera_id, **fields):
+        allowed = {
+            "name",
+            "type",
+            "rtsp_url",
+            "username",
+            "password",
+            "enabled",
+        }
+        fields = {
+            key: value
+            for key, value in fields.items()
+            if key in allowed
+        }
+        if not fields:
+            return
+
+        now = datetime.now(timezone.utc).isoformat()
+        if "enabled" in fields:
+            fields["enabled"] = int(bool(fields["enabled"]))
+
+        with self._lock, self.connect() as conn:
+            if fields.get("enabled"):
+                conn.execute(
+                    "UPDATE cameras SET enabled=0 WHERE id != ?",
+                    (camera_id,),
+                )
+            fields["updated_at"] = now
+            keys = list(fields)
+            conn.execute(
+                "UPDATE cameras SET "
+                + ", ".join(f"{key}=?" for key in keys)
+                + " WHERE id=?",
+                [fields[key] for key in keys] + [camera_id],
+            )
+
+    def delete_camera(self, camera_id):
+        with self._lock, self.connect() as conn:
+            row = conn.execute(
+                "SELECT enabled FROM cameras WHERE id=?",
+                (camera_id,),
+            ).fetchone()
+            if not row:
+                return False
+            conn.execute(
+                "DELETE FROM cameras WHERE id=?",
+                (camera_id,),
+            )
+            return True
 
     def get_app_setting(self, key, default=None):
         with self.connect() as conn:
