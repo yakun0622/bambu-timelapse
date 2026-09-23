@@ -2801,3 +2801,170 @@ dd { margin: 0; color: #d9dde2; overflow-wrap: anywhere; }
 :root[data-theme="light"] .reference-hint strong {
   color: #7653b5;
 }
+
+
+.camera-management-card {
+  grid-column: 1 / -1;
+}
+
+.camera-config-list {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.camera-config-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.camera-config-item.active {
+  border-color: var(--accent);
+}
+
+.camera-config-item > div:first-child {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.camera-config-item small {
+  overflow-wrap: anywhere;
+}
+
+.camera-config-item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.camera-config-form {
+  display: grid;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.camera-config-form-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.camera-config-form label {
+  display: grid;
+  gap: 6px;
+}
+
+.camera-config-form input,
+.camera-config-form select {
+  width: 100%;
+}
+
+.camera-enable-row {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+}
+
+.camera-enable-row input {
+  width: auto;
+}
+
+.danger-button {
+  opacity: .9;
+}
+
+.camera-preview-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, .72);
+  backdrop-filter: blur(6px);
+}
+
+.camera-preview-dialog {
+  width: min(960px, 96vw);
+  max-height: 92vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--panel);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, .38);
+}
+
+.camera-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.camera-preview-head > div {
+  display: grid;
+  gap: 4px;
+}
+
+.camera-preview-close {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 10px;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  background: rgba(127, 127, 127, .14);
+  color: inherit;
+}
+
+.camera-preview-stage {
+  display: grid;
+  place-items: center;
+  min-height: 320px;
+  background: #090909;
+}
+
+.camera-preview-stage img {
+  display: block;
+  width: 100%;
+  max-height: 68vh;
+  object-fit: contain;
+}
+
+.camera-preview-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  padding: 16px 18px 18px;
+}
+
+.camera-preview-metrics > div {
+  display: grid;
+  gap: 4px;
+}
+
+@media (max-width: 760px) {
+  .camera-config-item {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .camera-config-item-actions {
+    justify-content: flex-start;
+  }
+
+  .camera-preview-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
