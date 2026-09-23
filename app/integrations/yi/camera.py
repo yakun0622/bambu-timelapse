@@ -26,6 +26,8 @@ class YiCamera:
             maxlen=settings.rtsp_history_frames
         )
         self._rtsp_connected = False
+        self._rtsp_stale = False
+        self._rtsp_reconnecting = False
         self._rtsp_frames = 0
         self._rtsp_reconnects = 0
         self._rtsp_last_error = None
@@ -153,7 +155,19 @@ class YiCamera:
                 self._rtsp_process = process
 
                 with self._rtsp_lock:
+                    self._rtsp_connected = False
+                    self._rtsp_stale = False
+                    self._rtsp_reconnecting = True
                     self._rtsp_last_error = None
+                    self._rtsp_history.clear()
+
+                watchdog = threading.Thread(
+                    target=self._watch_rtsp_process,
+                    args=(process, time.monotonic()),
+                    name="yi-rtsp-watchdog",
+                    daemon=True,
+                )
+                watchdog.start()
 
                 self._read_mjpeg_stream(process)
 
@@ -165,6 +179,7 @@ class YiCamera:
             except Exception as exc:
                 with self._rtsp_lock:
                     self._rtsp_connected = False
+                    self._rtsp_reconnecting = True
                     self._rtsp_last_error = str(exc)
                     self._rtsp_reconnects += 1
 
@@ -178,7 +193,58 @@ class YiCamera:
                         pass
 
             if self._rtsp_running:
-                time.sleep(1)
+                time.sleep(settings.rtsp_reconnect_delay)
+
+    def _watch_rtsp_process(self, process, started_at):
+        while self._rtsp_running and process.poll() is None:
+            time.sleep(0.5)
+
+            with self._rtsp_lock:
+                if self._rtsp_process is not process:
+                    return
+
+                latest_at = self._latest_frame_at
+
+            now = time.monotonic()
+            no_frame_since_start = (
+                latest_at is None
+                or latest_at < started_at
+            )
+
+            if no_frame_since_start:
+                stale = (
+                    now - started_at
+                    > settings.rtsp_startup_timeout
+                )
+                reason = "RTSP startup timed out without frames"
+            else:
+                stale = (
+                    now - latest_at
+                    > settings.rtsp_stale_timeout
+                )
+                reason = "RTSP stream stalled; restarting FFmpeg"
+
+            if not stale:
+                continue
+
+            with self._rtsp_lock:
+                if self._rtsp_process is not process:
+                    return
+                self._rtsp_connected = False
+                self._rtsp_stale = True
+                self._rtsp_reconnecting = True
+                self._rtsp_last_error = reason
+                self._rtsp_history.clear()
+
+            try:
+                process.terminate()
+                process.wait(timeout=2)
+            except Exception:
+                try:
+                    process.kill()
+                except Exception:
+                    pass
+            return
 
     def _read_mjpeg_stream(self, process):
         buffer = bytearray()
@@ -227,6 +293,8 @@ class YiCamera:
                         }
                     )
                     self._rtsp_connected = True
+                    self._rtsp_stale = False
+                    self._rtsp_reconnecting = False
                     self._rtsp_last_error = None
 
     def rtsp_status(self):
@@ -245,6 +313,8 @@ class YiCamera:
                 "enabled": settings.capture_source
                 in {"auto", "rtsp"},
                 "connected": self._rtsp_connected,
+                "stale": self._rtsp_stale,
+                "reconnecting": self._rtsp_reconnecting,
                 "ready": (
                     self._latest_frame is not None
                     and age_ms is not None
@@ -397,7 +467,7 @@ class YiCamera:
                             break
 
                     if anchor_index is None:
-                        anchor_index = 0
+                        break
 
                 if mode == "frame":
                     selected_index = max(
@@ -572,20 +642,26 @@ class YiCamera:
 
     def _snapshot_http(self, target: Path):
         started = time.monotonic()
+        deadline = started + settings.http_snapshot_timeout
         last_error = None
 
         for attempt in range(
             1,
             settings.snapshot_retries + 1,
         ):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+
             try:
+                timeout = max(0.5, min(3.0, remaining))
                 response = self.session.get(
                     self.url,
                     auth=(
                         settings.yi_user,
                         settings.yi_password,
                     ),
-                    timeout=10,
+                    timeout=(timeout, timeout),
                 )
                 response.raise_for_status()
 
@@ -612,8 +688,11 @@ class YiCamera:
             except Exception as exc:
                 last_error = str(exc)
 
-                if attempt < settings.snapshot_retries:
-                    time.sleep(1)
+                if (
+                    attempt < settings.snapshot_retries
+                    and time.monotonic() + 0.5 < deadline
+                ):
+                    time.sleep(0.5)
 
         return (
             False,
