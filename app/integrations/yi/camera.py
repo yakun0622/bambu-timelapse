@@ -4,14 +4,14 @@ import threading
 import time
 from collections import deque
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 import requests
 
 from app.core.config import settings
 
 
-class YiCamera:
+class CameraSource:
     def __init__(self):
         self.session = requests.Session()
 
@@ -33,7 +33,32 @@ class YiCamera:
         self._rtsp_last_error = None
 
     @property
+    def camera_type(self):
+        value = settings.camera_type
+        if value not in {"yi", "rtsp"}:
+            value = "yi"
+        return value
+
+    @property
+    def display_name(self):
+        if self.camera_type == "yi":
+            return "小蚁摄像头"
+        return settings.camera_name
+
+    @property
+    def configured(self):
+        if self.camera_type == "rtsp":
+            return bool(
+                settings.camera_rtsp_url
+                or settings.yi_rtsp_url
+            )
+        return bool(settings.yi_ip)
+
+    @property
     def url(self):
+        if self.camera_type != "yi":
+            return None
+
         return (
             f"http://{settings.yi_ip}/cgi-bin/"
             "snapshot.sh?res=high&watermark=no"
@@ -41,6 +66,9 @@ class YiCamera:
 
     @property
     def rtsp_url(self):
+        if settings.camera_rtsp_url:
+            return settings.camera_rtsp_url
+
         if settings.yi_rtsp_url:
             return settings.yi_rtsp_url
 
@@ -61,6 +89,17 @@ class YiCamera:
 
     @property
     def rtsp_display_url(self):
+        if settings.camera_rtsp_url:
+            parsed = urlparse(settings.camera_rtsp_url)
+            if parsed.scheme and parsed.hostname:
+                port = parsed.port or 554
+                path = parsed.path or "/"
+                return (
+                    f"{parsed.scheme}://{parsed.hostname}:"
+                    f"{port}{path}"
+                )
+            return "Custom RTSP URL"
+
         path = settings.yi_rtsp_path.strip() or "/ch0_0.h264"
         if not path.startswith("/"):
             path = "/" + path
@@ -78,7 +117,7 @@ class YiCamera:
 
         if (
             source not in {"auto", "rtsp"}
-            or not settings.yi_ip
+            or not self.configured
             or self._rtsp_running
         ):
             return
@@ -377,7 +416,7 @@ class YiCamera:
                     frame_before_trigger_ms,
                 )
 
-            if source == "rtsp":
+            if source == "rtsp" or self.camera_type != "yi":
                 return (
                     False,
                     duration_ms,
@@ -642,6 +681,13 @@ class YiCamera:
 
     def _snapshot_http(self, target: Path):
         started = time.monotonic()
+
+        if self.camera_type != "yi" or not self.url:
+            return (
+                False,
+                0,
+                "当前摄像头仅支持 RTSP 抓拍",
+            )
         deadline = started + settings.http_snapshot_timeout
         last_error = None
 
@@ -708,8 +754,22 @@ class YiCamera:
         started = time.monotonic()
 
         try:
+            if self.camera_type == "rtsp":
+                parsed = urlparse(self.rtsp_url)
+                host = parsed.hostname
+                port = parsed.port or 554
+
+                if not host:
+                    raise RuntimeError("RTSP 地址未配置")
+
+                check = "rtsp-tcp"
+            else:
+                host = settings.yi_ip
+                port = 80
+                check = "tcp"
+
             with socket.create_connection(
-                (settings.yi_ip, 80),
+                (host, port),
                 timeout=2,
             ):
                 pass
@@ -720,8 +780,10 @@ class YiCamera:
                     (time.monotonic() - started)
                     * 1000
                 ),
-                "check": "tcp",
-                "port": 80,
+                "check": check,
+                "port": port,
+                "camera_type": self.camera_type,
+                "name": self.display_name,
                 "rtsp": self.rtsp_status(),
             }
 
@@ -732,11 +794,16 @@ class YiCamera:
                     (time.monotonic() - started)
                     * 1000
                 ),
-                "check": "tcp",
-                "port": 80,
+                "check": (
+                    "rtsp-tcp"
+                    if self.camera_type == "rtsp"
+                    else "tcp"
+                ),
                 "error": str(exc),
+                "camera_type": self.camera_type,
+                "name": self.display_name,
                 "rtsp": self.rtsp_status(),
             }
 
 
-camera = YiCamera()
+camera = CameraSource()
