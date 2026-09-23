@@ -271,6 +271,8 @@ function eventMessage(event) {
         ? `${prefix} · ${source}${duration}${rewind}${beforeTrigger}${frameAge}`
         : `${prefix}${duration}${rewind}${beforeTrigger}${frameAge}`;
     }
+    case "SNAPSHOT_SKIPPED_STALE":
+      return `跳过过期抓拍：第 ${d.layer} 层，当前已到第 ${d.latest_layer} 层`;
     case "SNAPSHOT_FAILED":
       return d.layer ? `第 ${d.layer} 层抓拍失败` : "抓拍失败";
     case "PRINT_COMPLETING":
@@ -536,9 +538,13 @@ onBeforeUnmount(() => {
                 {{
                   data.camera?.rtsp?.ready
                     ? "实时缓冲正常"
-                    : data.camera?.rtsp?.connected
-                      ? "等待最新帧"
-                      : "未连接"
+                    : data.camera?.rtsp?.reconnecting
+                      ? "正在自动重连"
+                      : data.camera?.rtsp?.stale
+                        ? "RTSP 已停滞"
+                        : data.camera?.rtsp?.connected
+                          ? "等待最新帧"
+                          : "未连接"
                 }}
               </strong>
             </div>
