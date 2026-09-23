@@ -2819,12 +2819,12 @@ dd { margin: 0; color: #d9dde2; overflow-wrap: anywhere; }
   justify-content: space-between;
   gap: 16px;
   padding: 14px;
-  border: 1px solid var(--border);
+  border: 1px solid #252b33;
   border-radius: 12px;
 }
 
 .camera-config-item.active {
-  border-color: var(--accent);
+  border-color: #64d98b;
 }
 
 .camera-config-item > div:first-child {
@@ -2848,7 +2848,7 @@ dd { margin: 0; color: #d9dde2; overflow-wrap: anywhere; }
   display: grid;
   gap: 12px;
   padding-top: 16px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid #252b33;
 }
 
 .camera-config-form-head {
@@ -2896,9 +2896,9 @@ dd { margin: 0; color: #d9dde2; overflow-wrap: anywhere; }
   width: min(960px, 96vw);
   max-height: 92vh;
   overflow: auto;
-  border: 1px solid var(--border);
+  border: 1px solid #252b33;
   border-radius: 18px;
-  background: var(--panel);
+  background: #11161b;
   box-shadow: 0 24px 80px rgba(0, 0, 0, .38);
 }
 
@@ -2908,7 +2908,7 @@ dd { margin: 0; color: #d9dde2; overflow-wrap: anywhere; }
   justify-content: space-between;
   gap: 16px;
   padding: 16px 18px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid #252b33;
 }
 
 .camera-preview-head > div {
@@ -2967,4 +2967,19 @@ dd { margin: 0; color: #d9dde2; overflow-wrap: anywhere; }
   .camera-preview-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
+
+
+:root[data-theme="light"] .camera-config-item,
+:root[data-theme="light"] .camera-config-form {
+  border-color: #d8dde3;
+}
+
+:root[data-theme="light"] .camera-preview-dialog {
+  background: #ffffff;
+  border-color: #d8dde3;
+}
+
+:root[data-theme="light"] .camera-preview-head {
+  border-color: #d8dde3;
 }
