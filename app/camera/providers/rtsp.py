@@ -19,7 +19,7 @@ class RtspCameraProvider(CameraProvider):
         return legacy_camera.snapshot(*args, **kwargs)
 
     def status(self):
-        return legacy_camera.rtsp_status()
+        return legacy_camera.status()
 
     def get_frame(self):
         return legacy_camera.get_latest_rtsp_frame()
