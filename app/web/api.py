@@ -96,6 +96,19 @@ class VisionTemplateRequest(BaseModel):
     h: int
 
 
+def _camera_public(value):
+    if not value:
+        return None
+
+    return {
+        key: item
+        for key, item in value.items()
+        if key != "password"
+    } | {
+        "password_configured": bool(value.get("password"))
+    }
+
+
 def _session_cookie(request: Request):
     return request.cookies.get(auth_service.COOKIE_NAME)
 
@@ -327,7 +340,7 @@ def create_camera(payload: CameraConfigRequest):
 
     return {
         "ok": True,
-        "camera": db.get_camera(camera_id),
+        "camera": _camera_public(db.get_camera(camera_id)),
     }
 
 
@@ -372,7 +385,7 @@ def update_camera(camera_id: int, payload: CameraConfigRequest):
 
     return {
         "ok": True,
-        "camera": db.get_camera(camera_id),
+        "camera": _camera_public(db.get_camera(camera_id)),
     }
 
 
@@ -408,7 +421,7 @@ def enable_camera(camera_id: int):
 
     return {
         "ok": True,
-        "camera": db.get_camera(camera_id),
+        "camera": _camera_public(db.get_camera(camera_id)),
     }
 
 
@@ -423,12 +436,17 @@ def test_camera_config(camera_id: int):
 
     enabled = bool(current.get("enabled"))
     if not enabled:
+        previous = db.get_enabled_camera()
+        previous_id = previous.get("id") if previous else None
+
         db.update_camera(camera_id, enabled=True)
         try:
             camera_manager.reload()
             result = camera_manager.test()
         finally:
             db.update_camera(camera_id, enabled=False)
+            if previous_id:
+                db.update_camera(previous_id, enabled=True)
             camera_manager.reload()
         return result
 
@@ -1591,7 +1609,7 @@ def get_settings():
                 or settings.yi_rtsp_url
             ),
             "rtsp_display_url": camera_manager.rtsp_display_url,
-            "active": db.get_enabled_camera(),
+            "active": _camera_public(db.get_enabled_camera()),
             "items": db.list_cameras(),
         },
         "capture": {
