@@ -231,8 +231,14 @@ function eventMessage(event) {
         : d.source === "http"
           ? "HTTP 回退"
           : "";
-      const duration = d.duration_ms !== undefined
-        ? ` · 耗时 ${d.duration_ms} ms`
+      const duration = d.acquisition_ms !== undefined
+        ? ` · 处理 ${d.acquisition_ms} ms`
+        : d.duration_ms !== undefined
+          ? ` · 处理 ${d.duration_ms} ms`
+          : "";
+      const queueWait = d.queue_wait_ms !== undefined
+        && d.queue_wait_ms > 500
+        ? ` · 排队 ${d.queue_wait_ms} ms`
         : "";
       const frameAge = d.frame_age_ms !== null
         && d.frame_age_ms !== undefined
@@ -268,8 +274,8 @@ function eventMessage(event) {
         : "抓拍完成";
 
       return source
-        ? `${prefix} · ${source}${duration}${rewind}${beforeTrigger}${frameAge}`
-        : `${prefix}${duration}${rewind}${beforeTrigger}${frameAge}`;
+        ? `${prefix} · ${source}${duration}${queueWait}${rewind}${beforeTrigger}${frameAge}`
+        : `${prefix}${duration}${queueWait}${rewind}${beforeTrigger}${frameAge}`;
     }
     case "SNAPSHOT_SKIPPED_STALE":
       return `跳过过期抓拍：第 ${d.layer} 层，当前已到第 ${d.latest_layer} 层`;
