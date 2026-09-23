@@ -451,31 +451,70 @@ class VisionSelector:
         )
         return frame_gray[y:y + h, x:x + w]
 
+    def _prepare_registration_pair(
+        self,
+        reference_gray,
+        candidate_gray,
+        max_dimension=360,
+    ):
+        if reference_gray.shape != candidate_gray.shape:
+            return None
+
+        height, width = reference_gray.shape[:2]
+        longest = max(height, width)
+        scale = min(
+            1.0,
+            float(max_dimension) / float(longest),
+        )
+
+        if scale < 1.0:
+            size = (
+                max(32, int(round(width * scale))),
+                max(32, int(round(height * scale))),
+            )
+            reference_gray = cv2.resize(
+                reference_gray,
+                size,
+                interpolation=cv2.INTER_AREA,
+            )
+            candidate_gray = cv2.resize(
+                candidate_gray,
+                size,
+                interpolation=cv2.INTER_AREA,
+            )
+
+        reference = cv2.GaussianBlur(
+            reference_gray,
+            (3, 3),
+            0,
+        ).astype(np.float32) / 255.0
+        candidate = cv2.GaussianBlur(
+            candidate_gray,
+            (3, 3),
+            0,
+        ).astype(np.float32) / 255.0
+
+        return reference, candidate, scale
+
     def _ecc_translation(
         self,
         reference_gray,
         candidate_gray,
     ):
-        if reference_gray.shape != candidate_gray.shape:
+        prepared = self._prepare_registration_pair(
+            reference_gray,
+            candidate_gray,
+        )
+        if prepared is None:
             return None
 
-        reference = cv2.GaussianBlur(
-            reference_gray,
-            (5, 5),
-            0,
-        ).astype(np.float32) / 255.0
-        candidate = cv2.GaussianBlur(
-            candidate_gray,
-            (5, 5),
-            0,
-        ).astype(np.float32) / 255.0
-
+        reference, candidate, scale = prepared
         warp = np.eye(2, 3, dtype=np.float32)
         criteria = (
             cv2.TERM_CRITERIA_EPS
             | cv2.TERM_CRITERIA_COUNT,
-            60,
-            1e-5,
+            25,
+            5e-4,
         )
 
         try:
@@ -491,11 +530,18 @@ class VisionSelector:
         except cv2.error:
             return None
 
+        # ECC ran on a smaller image. Convert translation back to the
+        # original ROI coordinate system before full-resolution alignment.
+        full_warp = warp.copy()
+        if scale > 0:
+            full_warp[0, 2] /= scale
+            full_warp[1, 2] /= scale
+
         return {
             "score": float(score),
-            "dx": float(warp[0, 2]),
-            "dy": float(warp[1, 2]),
-            "warp": warp,
+            "dx": float(full_warp[0, 2]),
+            "dy": float(full_warp[1, 2]),
+            "warp": full_warp,
         }
 
     def _align_by_ecc(
@@ -532,19 +578,35 @@ class VisionSelector:
         )
 
     def _motion_px(self, previous_roi, current_roi):
-        motion = self._ecc_translation(
+        prepared = self._prepare_registration_pair(
             previous_roi,
             current_roi,
+            max_dimension=320,
         )
-        if motion is None:
+        if prepared is None:
             return None
 
-        return float(
-            math.hypot(
-                motion["dx"],
-                motion["dy"],
+        previous, current, scale = prepared
+
+        try:
+            (dx, dy), response = cv2.phaseCorrelate(
+                previous,
+                current,
             )
-        )
+        except cv2.error:
+            return None
+
+        if not np.isfinite(dx) or not np.isfinite(dy):
+            return None
+
+        if response < 0.05:
+            return None
+
+        if scale > 0:
+            dx /= scale
+            dy /= scale
+
+        return float(math.hypot(dx, dy))
 
     def select_reference(
         self,
