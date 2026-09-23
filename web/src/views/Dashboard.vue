@@ -473,8 +473,14 @@ onBeforeUnmount(() => {
         <article class="card dashboard-primary-card camera-snapshot-card">
           <div class="primary-card-head">
             <div>
-              <small>小蚁摄像头</small>
-              <strong>{{ data.camera?.ip || "未配置" }}</strong>
+              <small>{{ data.camera?.name || "摄像头" }}</small>
+              <strong>
+                {{
+                  data.camera?.type === "rtsp"
+                    ? (data.camera?.rtsp_display_url || "未配置")
+                    : (data.camera?.ip || "未配置")
+                }}
+              </strong>
             </div>
 
             <span
