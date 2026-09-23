@@ -234,9 +234,12 @@ def status():
             "last_message_at": mqtt_state["last_message_at"],
         },
         "camera": {
-            "ip": settings.yi_ip,
-            "configured": bool(settings.yi_ip),
+            "type": camera.camera_type,
+            "name": camera.display_name,
+            "ip": settings.yi_ip if camera.camera_type == "yi" else None,
+            "configured": camera.configured,
             "capture_source": settings.capture_source,
+            "rtsp_display_url": camera.rtsp_display_url,
             "rtsp": camera.rtsp_status(),
         },
         "job": job,
@@ -253,9 +256,13 @@ def printer():
 @router.get("/camera")
 def camera_info():
     return {
-        "ip": settings.yi_ip,
-        "user": settings.yi_user,
-        "configured": bool(settings.yi_ip),
+        "type": camera.camera_type,
+        "name": camera.display_name,
+        "ip": settings.yi_ip if camera.camera_type == "yi" else None,
+        "user": settings.yi_user if camera.camera_type == "yi" else None,
+        "configured": camera.configured,
+        "capture_source": settings.capture_source,
+        "rtsp_display_url": camera.rtsp_display_url,
     }
 
 
@@ -1346,13 +1353,31 @@ def get_settings():
             "device_id": settings.bambu_device_id,
         },
         "camera": {
-            "ip": settings.yi_ip,
-            "user": settings.yi_user,
-            "password_configured": bool(settings.yi_password),
+            "type": camera.camera_type,
+            "name": camera.display_name,
+            "configured": camera.configured,
+            "ip": settings.yi_ip if camera.camera_type == "yi" else None,
+            "user": settings.yi_user if camera.camera_type == "yi" else None,
+            "password_configured": (
+                bool(settings.yi_password)
+                if camera.camera_type == "yi"
+                else False
+            ),
             "capture_source": settings.capture_source,
-            "rtsp_port": settings.yi_rtsp_port,
-            "rtsp_path": settings.yi_rtsp_path,
-            "rtsp_url_configured": bool(settings.yi_rtsp_url),
+            "rtsp_port": (
+                settings.yi_rtsp_port
+                if camera.camera_type == "yi"
+                else None
+            ),
+            "rtsp_path": (
+                settings.yi_rtsp_path
+                if camera.camera_type == "yi"
+                else None
+            ),
+            "rtsp_url_configured": bool(
+                settings.camera_rtsp_url
+                or settings.yi_rtsp_url
+            ),
             "rtsp_display_url": camera.rtsp_display_url,
         },
         "capture": {
