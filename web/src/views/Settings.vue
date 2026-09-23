@@ -3,6 +3,20 @@ import { onMounted, ref } from "vue";
 import { api } from "../api";
 
 const settings = ref(null);
+
+const cameraItems = ref([]);
+const editingCameraId = ref(null);
+const cameraForm = ref({
+  name: "",
+  type: "rtsp",
+  rtsp_url: "",
+  username: "",
+  password: "",
+  enabled: true
+});
+const savingCamera = ref(false);
+const testingCameraConfig = ref(false);
+const cameraMessage = ref("");
 const captureTiming = ref({
   mode: "time",
   frames: 5,
@@ -65,6 +79,7 @@ const savingBedTemplate = ref(false);
 
 async function loadSettings() {
   settings.value = await api("/api/settings");
+  cameraItems.value = settings.value.camera?.items || [];
 
   captureTiming.value = {
     mode: settings.value.capture.capture_rewind_mode,
@@ -105,6 +120,115 @@ async function loadSettings() {
     );
   } catch {
     calibrationImage.value = null;
+  }
+}
+
+function resetCameraForm() {
+  editingCameraId.value = null;
+  cameraForm.value = {
+    name: "",
+    type: "rtsp",
+    rtsp_url: "",
+    username: "",
+    password: "",
+    enabled: true
+  };
+  cameraMessage.value = "";
+}
+
+function editCamera(item) {
+  editingCameraId.value = item.id;
+  cameraForm.value = {
+    name: item.name || "",
+    type: item.type || "rtsp",
+    rtsp_url: item.rtsp_url || "",
+    username: item.username || "",
+    password: "",
+    enabled: Boolean(item.enabled)
+  };
+  cameraMessage.value = "";
+}
+
+async function saveCamera() {
+  savingCamera.value = true;
+  cameraMessage.value = "";
+
+  try {
+    const path = editingCameraId.value
+      ? `/api/cameras/${editingCameraId.value}`
+      : "/api/cameras";
+    const response = await api(path, {
+      method: editingCameraId.value ? "PUT" : "POST",
+      body: JSON.stringify(cameraForm.value)
+    });
+
+    cameraMessage.value = "摄像头配置已保存并立即生效";
+    await loadSettings();
+    if (!editingCameraId.value && response.camera?.id) {
+      editCamera(response.camera);
+    }
+  } catch (error) {
+    cameraMessage.value = error.message || "保存失败";
+  } finally {
+    savingCamera.value = false;
+  }
+}
+
+async function enableCamera(item) {
+  cameraMessage.value = "";
+
+  try {
+    await api(`/api/cameras/${item.id}/enable`, {
+      method: "POST"
+    });
+    cameraMessage.value = `已切换到 ${item.name}`;
+    await loadSettings();
+  } catch (error) {
+    cameraMessage.value = error.message || "切换失败";
+  }
+}
+
+async function removeCamera(item) {
+  if (!confirm(`确定删除摄像头“${item.name}”吗？`)) return;
+
+  cameraMessage.value = "";
+
+  try {
+    await api(`/api/cameras/${item.id}`, {
+      method: "DELETE"
+    });
+    if (editingCameraId.value === item.id) {
+      resetCameraForm();
+    }
+    cameraMessage.value = "摄像头已删除";
+    await loadSettings();
+  } catch (error) {
+    cameraMessage.value = error.message || "删除失败";
+  }
+}
+
+async function testCameraConfig(item = null) {
+  const targetId = item?.id || editingCameraId.value;
+
+  if (!targetId) {
+    cameraMessage.value = "请先保存摄像头，再测试连接";
+    return;
+  }
+
+  testingCameraConfig.value = true;
+  cameraMessage.value = "";
+
+  try {
+    const result = await api(`/api/cameras/${targetId}/test`, {
+      method: "POST"
+    });
+    cameraMessage.value = result.online
+      ? `连接成功 · ${result.duration_ms ?? "—"} ms`
+      : `连接失败 · ${result.error || "未知错误"}`;
+  } catch (error) {
+    cameraMessage.value = error.message || "连接测试失败";
+  } finally {
+    testingCameraConfig.value = false;
   }
 }
 
@@ -411,7 +535,7 @@ onMounted(loadSettings);
       <div>
         <p class="eyebrow">系统配置</p>
         <h1>设置</h1>
-        <p>基础配置来自 .env；抓拍回溯策略可在页面保存并立即生效。</p>
+        <p>摄像头、抓拍与视觉参数均可在页面保存并立即生效。</p>
       </div>
     </div>
 
@@ -452,78 +576,158 @@ onMounted(loadSettings);
         </dl>
       </article>
 
-      <article class="card">
+      <article class="card camera-management-card">
         <div class="card-title">
-          <span>摄像头</span>
-          <span>
-            {{
-              settings.camera.type === "rtsp"
-                ? "Generic RTSP"
-                : "Yi Hack"
-            }}
-          </span>
+          <span>摄像头管理</span>
+          <span>{{ cameraItems.length }} 个</span>
         </div>
 
-        <dl>
-          <dt>名称</dt>
-          <dd>{{ settings.camera.name || "Camera" }}</dd>
+        <div class="camera-config-list">
+          <div
+            v-for="item in cameraItems"
+            :key="item.id"
+            class="camera-config-item"
+            :class="{ active: item.enabled }"
+          >
+            <div>
+              <strong>{{ item.name }}</strong>
+              <small>
+                {{ item.type === "rtsp" ? "通用 RTSP" : "小蚁 / yi-hack" }}
+                <template v-if="item.rtsp_url"> · {{ item.rtsp_url }}</template>
+              </small>
+            </div>
 
-          <dt>类型</dt>
-          <dd>
-            {{
-              settings.camera.type === "rtsp"
-                ? "通用 RTSP"
-                : "小蚁 / yi-hack"
-            }}
-          </dd>
+            <div class="camera-config-item-actions">
+              <span v-if="item.enabled" class="badge ok">当前</span>
+              <button
+                v-else
+                type="button"
+                class="button secondary-button"
+                @click="enableCamera(item)"
+              >
+                启用
+              </button>
+              <button
+                type="button"
+                class="button secondary-button"
+                @click="testCameraConfig(item)"
+              >
+                测试
+              </button>
+              <button
+                type="button"
+                class="button secondary-button"
+                @click="editCamera(item)"
+              >
+                编辑
+              </button>
+              <button
+                type="button"
+                class="button secondary-button danger-button"
+                @click="removeCamera(item)"
+              >
+                删除
+              </button>
+            </div>
+          </div>
 
-          <template v-if="settings.camera.type === 'yi'">
-            <dt>IP 地址</dt>
-            <dd>{{ settings.camera.ip || "—" }}</dd>
+          <div v-if="!cameraItems.length" class="empty">
+            暂无摄像头配置
+          </div>
+        </div>
 
-            <dt>用户名</dt>
-            <dd>{{ settings.camera.user || "—" }}</dd>
+        <div class="camera-config-form">
+          <div class="camera-config-form-head">
+            <strong>
+              {{ editingCameraId ? "编辑摄像头" : "添加摄像头" }}
+            </strong>
+            <button
+              v-if="editingCameraId"
+              type="button"
+              class="button secondary-button"
+              @click="resetCameraForm"
+            >
+              新增
+            </button>
+          </div>
 
-            <dt>密码</dt>
-            <dd>
-              {{
-                settings.camera.password_configured
-                  ? "已配置"
-                  : "未配置"
-              }}
-            </dd>
+          <label>
+            <span>名称</span>
+            <input
+              v-model.trim="cameraForm.name"
+              type="text"
+              placeholder="例如：小米11青春版"
+            />
+          </label>
 
-            <dt>RTSP 端口</dt>
-            <dd>{{ settings.camera.rtsp_port }}</dd>
+          <label>
+            <span>类型</span>
+            <select v-model="cameraForm.type">
+              <option value="rtsp">通用 RTSP</option>
+              <option value="yi">小蚁 / yi-hack</option>
+            </select>
+          </label>
 
-            <dt>RTSP 路径</dt>
-            <dd>{{ settings.camera.rtsp_path }}</dd>
-          </template>
+          <label>
+            <span>RTSP 地址</span>
+            <input
+              v-model.trim="cameraForm.rtsp_url"
+              type="text"
+              placeholder="rtsp://192.168.2.120:8554/live"
+            />
+          </label>
 
-          <dt>抓拍来源</dt>
-          <dd>
-            {{
-              settings.camera.capture_source === "auto"
-                ? (
-                    settings.camera.type === "yi"
-                      ? "RTSP 优先 / HTTP 回退"
-                      : "RTSP"
-                  )
-                : settings.camera.capture_source.toUpperCase()
-            }}
-          </dd>
+          <label>
+            <span>用户名</span>
+            <input
+              v-model.trim="cameraForm.username"
+              type="text"
+              placeholder="可选"
+            />
+          </label>
 
-          <dt>RTSP 地址</dt>
-          <dd>{{ settings.camera.rtsp_display_url }}</dd>
+          <label>
+            <span>密码</span>
+            <input
+              v-model="cameraForm.password"
+              type="password"
+              :placeholder="editingCameraId ? '留空表示不修改' : '可选'"
+            />
+          </label>
 
-          <dt>配置状态</dt>
-          <dd>{{ settings.camera.configured ? "已配置" : "未配置" }}</dd>
-        </dl>
+          <label class="camera-enable-row">
+            <input v-model="cameraForm.enabled" type="checkbox" />
+            <span>保存后立即设为当前摄像头</span>
+          </label>
 
-        <p class="settings-hint" v-if="settings.camera.type === 'rtsp'">
-          通用 RTSP 可直接接入旧 Android 手机、网络摄像头或其他 RTSP Server。
-          修改 .env 中 CAMERA_RTSP_URL 后重启容器即可。
-        </p>
+          <div class="capture-config-actions">
+            <button
+              type="button"
+              class="button"
+              :disabled="savingCamera"
+              @click="saveCamera"
+            >
+              {{ savingCamera ? "正在保存…" : "保存摄像头" }}
+            </button>
+
+            <button
+              v-if="editingCameraId"
+              type="button"
+              class="button secondary-button"
+              :disabled="testingCameraConfig"
+              @click="testCameraConfig()"
+            >
+              {{ testingCameraConfig ? "正在测试…" : "测试连接" }}
+            </button>
+          </div>
+
+          <span
+            v-if="cameraMessage"
+            class="capture-config-message"
+          >
+            {{ cameraMessage }}
+          </span>
+        </div>
       </article>
 
       <article class="card">
