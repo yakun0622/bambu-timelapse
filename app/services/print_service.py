@@ -502,6 +502,7 @@ class PrintService:
             and self.current_job_id is not None
             and gcode_state in {None, "RUNNING"}
             and (progress is None or progress < 100)
+            and layer > 1
             and layer % settings.capture_every_layers == 0
         )
 
