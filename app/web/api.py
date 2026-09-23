@@ -1,13 +1,14 @@
 from pathlib import Path
+import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 from app.core.config import settings
 from app.core.events import event_bus
 from app.integrations.bambu.mqtt import mqtt_state
-from app.integrations.yi.camera import camera
+from app.camera import camera_manager
 from app.services.auth_service import auth_service
 from app.services.print_service import print_service
 from app.services.timelapse_service import timelapse_service
@@ -23,6 +24,15 @@ class LoginRequest(BaseModel):
 class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str
+
+
+class CameraConfigRequest(BaseModel):
+    name: str
+    type: str
+    rtsp_url: str | None = None
+    username: str | None = None
+    password: str | None = None
+    enabled: bool = True
 
 
 class CaptureTimingRequest(BaseModel):
@@ -234,13 +244,17 @@ def status():
             "last_message_at": mqtt_state["last_message_at"],
         },
         "camera": {
-            "type": camera.camera_type,
-            "name": camera.display_name,
-            "ip": settings.yi_ip if camera.camera_type == "yi" else None,
-            "configured": camera.configured,
+            "type": camera_manager.camera_type,
+            "name": camera_manager.display_name,
+            "ip": (
+                settings.yi_ip
+                if camera_manager.camera_type == "yi"
+                else None
+            ),
+            "configured": camera_manager.configured,
             "capture_source": settings.capture_source,
-            "rtsp_display_url": camera.rtsp_display_url,
-            "rtsp": camera.rtsp_status(),
+            "rtsp_display_url": camera_manager.rtsp_display_url,
+            "rtsp": camera_manager.rtsp_status(),
         },
         "job": job,
         "latest_snapshot": latest_snapshot,
@@ -256,19 +270,205 @@ def printer():
 @router.get("/camera")
 def camera_info():
     return {
-        "type": camera.camera_type,
-        "name": camera.display_name,
-        "ip": settings.yi_ip if camera.camera_type == "yi" else None,
-        "user": settings.yi_user if camera.camera_type == "yi" else None,
-        "configured": camera.configured,
+        "type": camera_manager.camera_type,
+        "name": camera_manager.display_name,
+        "ip": settings.yi_ip if camera_manager.camera_type == "yi" else None,
+        "user": settings.yi_user if camera_manager.camera_type == "yi" else None,
+        "configured": camera_manager.configured,
         "capture_source": settings.capture_source,
-        "rtsp_display_url": camera.rtsp_display_url,
+        "rtsp_display_url": camera_manager.rtsp_display_url,
     }
 
 
 @router.post("/camera/test")
 def camera_test():
-    return camera.test()
+    return camera_manager.test()
+
+
+@router.get("/cameras")
+def cameras():
+    return db.list_cameras()
+
+
+@router.post("/cameras")
+def create_camera(payload: CameraConfigRequest):
+    camera_type = payload.type.strip().lower()
+    if camera_type not in {"yi", "rtsp"}:
+        raise HTTPException(
+            status_code=400,
+            detail="摄像头类型必须为 yi 或 rtsp",
+        )
+
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(
+            status_code=400,
+            detail="摄像头名称不能为空",
+        )
+
+    rtsp_url = (payload.rtsp_url or "").strip() or None
+    if camera_type == "rtsp" and not rtsp_url:
+        raise HTTPException(
+            status_code=400,
+            detail="RTSP 摄像头必须填写 RTSP 地址",
+        )
+
+    camera_id = db.create_camera(
+        name=name,
+        camera_type=camera_type,
+        rtsp_url=rtsp_url,
+        username=(payload.username or "").strip() or None,
+        password=payload.password or None,
+        enabled=payload.enabled,
+    )
+
+    if payload.enabled:
+        camera_manager.reload()
+
+    return {
+        "ok": True,
+        "camera": db.get_camera(camera_id),
+    }
+
+
+@router.put("/cameras/{camera_id}")
+def update_camera(camera_id: int, payload: CameraConfigRequest):
+    current = db.get_camera(camera_id)
+    if not current:
+        raise HTTPException(
+            status_code=404,
+            detail="摄像头不存在",
+        )
+
+    camera_type = payload.type.strip().lower()
+    if camera_type not in {"yi", "rtsp"}:
+        raise HTTPException(
+            status_code=400,
+            detail="摄像头类型必须为 yi 或 rtsp",
+        )
+
+    rtsp_url = (payload.rtsp_url or "").strip() or None
+    if camera_type == "rtsp" and not rtsp_url:
+        raise HTTPException(
+            status_code=400,
+            detail="RTSP 摄像头必须填写 RTSP 地址",
+        )
+
+    values = {
+        "name": payload.name.strip(),
+        "type": camera_type,
+        "rtsp_url": rtsp_url,
+        "username": (payload.username or "").strip() or None,
+        "enabled": payload.enabled,
+    }
+
+    if payload.password is not None and payload.password != "":
+        values["password"] = payload.password
+
+    db.update_camera(camera_id, **values)
+
+    if payload.enabled or current.get("enabled"):
+        camera_manager.reload()
+
+    return {
+        "ok": True,
+        "camera": db.get_camera(camera_id),
+    }
+
+
+@router.delete("/cameras/{camera_id}")
+def delete_camera(camera_id: int):
+    current = db.get_camera(camera_id)
+    if not current:
+        raise HTTPException(
+            status_code=404,
+            detail="摄像头不存在",
+        )
+
+    was_enabled = bool(current.get("enabled"))
+    db.delete_camera(camera_id)
+
+    if was_enabled:
+        camera_manager.reload()
+
+    return {"ok": True}
+
+
+@router.post("/cameras/{camera_id}/enable")
+def enable_camera(camera_id: int):
+    current = db.get_camera(camera_id)
+    if not current:
+        raise HTTPException(
+            status_code=404,
+            detail="摄像头不存在",
+        )
+
+    db.update_camera(camera_id, enabled=True)
+    camera_manager.reload()
+
+    return {
+        "ok": True,
+        "camera": db.get_camera(camera_id),
+    }
+
+
+@router.post("/cameras/{camera_id}/test")
+def test_camera_config(camera_id: int):
+    current = db.get_camera(camera_id)
+    if not current:
+        raise HTTPException(
+            status_code=404,
+            detail="摄像头不存在",
+        )
+
+    enabled = bool(current.get("enabled"))
+    if not enabled:
+        db.update_camera(camera_id, enabled=True)
+        try:
+            camera_manager.reload()
+            result = camera_manager.test()
+        finally:
+            db.update_camera(camera_id, enabled=False)
+            camera_manager.reload()
+        return result
+
+    camera_manager.reload()
+    return camera_manager.test()
+
+
+@router.get("/camera/preview")
+def camera_preview():
+    def stream():
+        last_seq = None
+
+        while True:
+            frame = camera_manager.get_frame()
+            if not frame or not frame.get("data"):
+                time.sleep(0.1)
+                continue
+
+            seq = frame.get("seq")
+            if seq == last_seq:
+                time.sleep(0.05)
+                continue
+
+            last_seq = seq
+            yield (
+                b"--frame\r\n"
+                b"Content-Type: image/jpeg\r\n"
+                b"Cache-Control: no-cache\r\n\r\n"
+                + frame["data"]
+                + b"\r\n"
+            )
+
+    return StreamingResponse(
+        stream(),
+        media_type="multipart/x-mixed-replace; boundary=frame",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+            "Pragma": "no-cache",
+        },
+    )
 
 
 @router.post("/camera/snapshot")
@@ -297,7 +497,7 @@ def manual_snapshot():
         frame_offset,
         rewind_ms,
         frame_before_trigger_ms,
-    ) = camera.snapshot(
+    ) = camera_manager.snapshot(
         manual_path,
         rewind_mode="time",
         rewind_ms=0,
@@ -790,7 +990,7 @@ def _vision_capture_settings():
 
 @router.post("/settings/vision-test")
 def test_vision():
-    latest = camera.get_latest_rtsp_frame()
+    latest = camera_manager.get_frame()
 
     if not latest:
         raise HTTPException(
@@ -1353,32 +1553,46 @@ def get_settings():
             "device_id": settings.bambu_device_id,
         },
         "camera": {
-            "type": camera.camera_type,
-            "name": camera.display_name,
-            "configured": camera.configured,
-            "ip": settings.yi_ip if camera.camera_type == "yi" else None,
-            "user": settings.yi_user if camera.camera_type == "yi" else None,
-            "password_configured": (
-                bool(settings.yi_password)
-                if camera.camera_type == "yi"
-                else False
+            "type": camera_manager.camera_type,
+            "name": camera_manager.display_name,
+            "configured": camera_manager.configured,
+            "ip": (
+                settings.yi_ip
+                if camera_manager.camera_type == "yi"
+                else None
+            ),
+            "user": (
+                settings.yi_user
+                if camera_manager.camera_type == "yi"
+                else None
+            ),
+            "password_configured": bool(
+                (db.get_enabled_camera() or {}).get("password")
+                or (
+                    settings.yi_password
+                    if camera_manager.camera_type == "yi"
+                    else ""
+                )
             ),
             "capture_source": settings.capture_source,
             "rtsp_port": (
                 settings.yi_rtsp_port
-                if camera.camera_type == "yi"
+                if camera_manager.camera_type == "yi"
                 else None
             ),
             "rtsp_path": (
                 settings.yi_rtsp_path
-                if camera.camera_type == "yi"
+                if camera_manager.camera_type == "yi"
                 else None
             ),
             "rtsp_url_configured": bool(
-                settings.camera_rtsp_url
+                (db.get_enabled_camera() or {}).get("rtsp_url")
+                or settings.camera_rtsp_url
                 or settings.yi_rtsp_url
             ),
-            "rtsp_display_url": camera.rtsp_display_url,
+            "rtsp_display_url": camera_manager.rtsp_display_url,
+            "active": db.get_enabled_camera(),
+            "items": db.list_cameras(),
         },
         "capture": {
             "auto_capture": settings.auto_capture,
