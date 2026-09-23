@@ -33,6 +33,22 @@ class Settings:
         10,
         int(os.getenv("RTSP_HISTORY_FRAMES", "60")),
     )
+    rtsp_stale_timeout: float = max(
+        2.0,
+        float(os.getenv("RTSP_STALE_TIMEOUT", "5.0")),
+    )
+    rtsp_startup_timeout: float = max(
+        3.0,
+        float(os.getenv("RTSP_STARTUP_TIMEOUT", "8.0")),
+    )
+    rtsp_reconnect_delay: float = max(
+        0.5,
+        float(os.getenv("RTSP_RECONNECT_DELAY", "2.0")),
+    )
+    http_snapshot_timeout: float = max(
+        2.0,
+        float(os.getenv("HTTP_SNAPSHOT_TIMEOUT", "8.0")),
+    )
     capture_rewind_mode: str = os.getenv(
         "CAPTURE_REWIND_MODE",
         "time",
