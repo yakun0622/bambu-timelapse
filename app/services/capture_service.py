@@ -588,6 +588,10 @@ class CaptureService:
                 },
             )
 
+            queue_wait_ms = int(
+                (time.monotonic() - triggered_at) * 1000
+            )
+
             runtime = self._runtime_settings()
 
             rewind_mode = runtime.get(
@@ -710,6 +714,7 @@ class CaptureService:
                         "path": str(target),
                         "duration_ms": duration_ms,
                         "acquisition_ms": result["acquisition_ms"],
+                        "queue_wait_ms": queue_wait_ms,
                         "frame_age_ms": result["frame_age_ms"],
                         "frame_offset": result["frame_offset"],
                         "rewind_mode": rewind_mode,
