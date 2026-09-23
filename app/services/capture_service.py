@@ -15,6 +15,8 @@ class CaptureService:
         self.queue = queue.Queue()
         self.running = False
         self.thread = None
+        self._latest_layer_by_job = {}
+        self._queue_lock = threading.Lock()
 
     def start(self):
         if self.running:
@@ -38,6 +40,9 @@ class CaptureService:
         layer: int,
         total=None,
     ):
+        with self._queue_lock:
+            self._latest_layer_by_job[job_id] = layer
+
         self.queue.put(
             (
                 job_id,
@@ -547,6 +552,24 @@ class CaptureService:
                 total,
                 triggered_at,
             ) = item
+
+            with self._queue_lock:
+                latest_layer = self._latest_layer_by_job.get(
+                    job_id,
+                    layer,
+                )
+
+            if layer < latest_layer:
+                event_bus.emit(
+                    "SNAPSHOT_SKIPPED_STALE",
+                    f"Skipped stale capture for layer {layer}",
+                    {
+                        "job_id": job_id,
+                        "layer": layer,
+                        "latest_layer": latest_layer,
+                    },
+                )
+                continue
 
             target = (
                 job_dir
