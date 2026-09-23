@@ -9,6 +9,7 @@ from urllib.parse import quote, urlparse
 import requests
 
 from app.core.config import settings
+from app.storage.database import db
 
 
 class CameraSource:
@@ -32,24 +33,55 @@ class CameraSource:
         self._rtsp_reconnects = 0
         self._rtsp_last_error = None
 
+    def _active_config(self):
+        value = db.get_enabled_camera()
+        if value:
+            return value
+
+        return {
+            "name": (
+                "小蚁摄像头"
+                if settings.camera_type == "yi"
+                else settings.camera_name
+            ),
+            "type": settings.camera_type,
+            "rtsp_url": (
+                settings.camera_rtsp_url
+                or settings.yi_rtsp_url
+                or None
+            ),
+            "username": settings.yi_user,
+            "password": settings.yi_password,
+            "enabled": 1,
+        }
+
     @property
     def camera_type(self):
-        value = settings.camera_type
+        value = str(
+            self._active_config().get("type")
+            or settings.camera_type
+            or "yi"
+        ).strip().lower()
         if value not in {"yi", "rtsp"}:
             value = "yi"
         return value
 
     @property
     def display_name(self):
+        value = self._active_config().get("name")
+        if value:
+            return str(value)
         if self.camera_type == "yi":
             return "小蚁摄像头"
         return settings.camera_name
 
     @property
     def configured(self):
+        config = self._active_config()
         if self.camera_type == "rtsp":
             return bool(
-                settings.camera_rtsp_url
+                config.get("rtsp_url")
+                or settings.camera_rtsp_url
                 or settings.yi_rtsp_url
             )
         return bool(settings.yi_ip)
@@ -66,11 +98,35 @@ class CameraSource:
 
     @property
     def rtsp_url(self):
-        if settings.camera_rtsp_url:
-            return settings.camera_rtsp_url
+        config = self._active_config()
+        configured_url = (
+            config.get("rtsp_url")
+            or settings.camera_rtsp_url
+            or settings.yi_rtsp_url
+        )
 
-        if settings.yi_rtsp_url:
-            return settings.yi_rtsp_url
+        if configured_url:
+            parsed = urlparse(configured_url)
+            username = config.get("username")
+            password = config.get("password")
+            if (
+                parsed.scheme
+                and parsed.hostname
+                and username
+                and parsed.username is None
+            ):
+                auth = quote(str(username), safe="")
+                if password:
+                    auth += ":" + quote(str(password), safe="")
+                auth += "@"
+                port = f":{parsed.port}" if parsed.port else ""
+                path = parsed.path or "/"
+                query = f"?{parsed.query}" if parsed.query else ""
+                return (
+                    f"{parsed.scheme}://{auth}{parsed.hostname}"
+                    f"{port}{path}{query}"
+                )
+            return configured_url
 
         path = settings.yi_rtsp_path.strip() or "/ch0_0.h264"
         if not path.startswith("/"):
@@ -89,8 +145,14 @@ class CameraSource:
 
     @property
     def rtsp_display_url(self):
-        if settings.camera_rtsp_url:
-            parsed = urlparse(settings.camera_rtsp_url)
+        config = self._active_config()
+        configured_url = (
+            config.get("rtsp_url")
+            or settings.camera_rtsp_url
+            or settings.yi_rtsp_url
+        )
+        if configured_url:
+            parsed = urlparse(configured_url)
             if parsed.scheme and parsed.hostname:
                 port = parsed.port or 554
                 path = parsed.path or "/"
@@ -103,9 +165,6 @@ class CameraSource:
         path = settings.yi_rtsp_path.strip() or "/ch0_0.h264"
         if not path.startswith("/"):
             path = "/" + path
-
-        if settings.yi_rtsp_url:
-            return "Custom RTSP URL"
 
         return (
             f"rtsp://{settings.yi_ip}:"
@@ -704,8 +763,10 @@ class CameraSource:
                 response = self.session.get(
                     self.url,
                     auth=(
-                        settings.yi_user,
-                        settings.yi_password,
+                        self._active_config().get("username")
+                        or settings.yi_user,
+                        self._active_config().get("password")
+                        or settings.yi_password,
                     ),
                     timeout=(timeout, timeout),
                 )
@@ -748,6 +809,34 @@ class CameraSource:
             ),
             last_error,
         )
+
+    def reload(self):
+        was_running = self._rtsp_running
+        self.stop()
+        with self._rtsp_lock:
+            self._latest_frame = None
+            self._latest_frame_at = None
+            self._rtsp_history.clear()
+            self._rtsp_stale = False
+            self._rtsp_reconnecting = False
+            self._rtsp_last_error = None
+        if was_running or settings.capture_source in {"auto", "rtsp"}:
+            self.start()
+
+    def start_rtsp(self):
+        return self.start()
+
+    def stop_rtsp(self):
+        return self.stop()
+
+    def status(self):
+        return {
+            "type": self.camera_type,
+            "name": self.display_name,
+            "configured": self.configured,
+            "rtsp_display_url": self.rtsp_display_url,
+            "rtsp": self.rtsp_status(),
+        }
 
     def test(self):
         """Lightweight LAN reachability check."""
