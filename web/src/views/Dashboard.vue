@@ -14,6 +14,8 @@ const timeline = ref([]);
 const loading = ref(true);
 const cameraHealth = ref(null);
 const testingCamera = ref(false);
+const cameraPreviewOpen = ref(false);
+const cameraPreviewVersion = ref(Date.now());
 const now = ref(Date.now());
 
 let socket;
@@ -137,6 +139,15 @@ async function testCamera() {
   } finally {
     testingCamera.value = false;
   }
+}
+
+function openCameraPreview() {
+  cameraPreviewVersion.value = Date.now();
+  cameraPreviewOpen.value = true;
+}
+
+function closeCameraPreview() {
+  cameraPreviewOpen.value = false;
 }
 
 async function captureNow() {
@@ -526,6 +537,14 @@ onBeforeUnmount(() => {
             <div class="camera-summary-actions">
               <button
                 class="button secondary-button"
+                :disabled="!data.camera?.rtsp?.ready"
+                @click="openCameraPreview"
+              >
+                实时预览
+              </button>
+
+              <button
+                class="button secondary-button"
                 :disabled="testingCamera"
                 @click="testCamera"
               >
@@ -841,5 +860,63 @@ onBeforeUnmount(() => {
         </div>
       </article>
     </template>
+
+    <div
+      v-if="cameraPreviewOpen"
+      class="camera-preview-modal"
+      @click.self="closeCameraPreview"
+    >
+      <div class="camera-preview-dialog">
+        <div class="camera-preview-head">
+          <div>
+            <small>RTSP 实时预览</small>
+            <strong>{{ data.camera?.name || "摄像头" }}</strong>
+          </div>
+
+          <button
+            type="button"
+            class="camera-preview-close"
+            @click="closeCameraPreview"
+          >
+            ×
+          </button>
+        </div>
+
+        <div class="camera-preview-stage">
+          <img
+            :src="'/api/camera/preview?v=' + cameraPreviewVersion"
+            :alt="(data.camera?.name || '摄像头') + ' 实时预览'"
+          />
+        </div>
+
+        <div class="camera-preview-metrics">
+          <div>
+            <small>RTSP 状态</small>
+            <strong>
+              {{ data.camera?.rtsp?.ready ? "实时缓冲正常" : "未就绪" }}
+            </strong>
+          </div>
+          <div>
+            <small>最新帧龄</small>
+            <strong>
+              {{
+                data.camera?.rtsp?.frame_age_ms !== null
+                && data.camera?.rtsp?.frame_age_ms !== undefined
+                  ? data.camera.rtsp.frame_age_ms + " ms"
+                  : "—"
+              }}
+            </strong>
+          </div>
+          <div>
+            <small>缓存帧</small>
+            <strong>{{ data.camera?.rtsp?.history_frames ?? 0 }}</strong>
+          </div>
+          <div>
+            <small>重连次数</small>
+            <strong>{{ data.camera?.rtsp?.reconnects ?? 0 }}</strong>
+          </div>
+        </div>
+      </div>
+    </div>
   </section>
 </template>
