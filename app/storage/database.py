@@ -46,7 +46,8 @@ class Database:
                     video_path TEXT,
                     bambu_task_id TEXT,
                     bambu_subtask_id TEXT,
-                    job_key TEXT
+                    job_key TEXT,
+                    camera_id INTEGER
                 );
 
                 CREATE TABLE IF NOT EXISTS snapshots (
@@ -130,6 +131,7 @@ class Database:
             self._ensure_column(conn, "print_jobs", "bambu_task_id", "TEXT")
             self._ensure_column(conn, "print_jobs", "bambu_subtask_id", "TEXT")
             self._ensure_column(conn, "print_jobs", "job_key", "TEXT")
+            self._ensure_column(conn, "print_jobs", "camera_id", "INTEGER")
             self._ensure_column(conn, "snapshots", "source", "TEXT")
             self._ensure_column(conn, "snapshots", "frame_age_ms", "INTEGER")
             self._ensure_column(conn, "snapshots", "frame_offset", "INTEGER")
@@ -512,9 +514,25 @@ class Database:
         bambu_task_id=None,
         bambu_subtask_id=None,
         job_key=None,
+        camera_id=None,
     ):
         now = datetime.now(timezone.utc).isoformat()
         with self._lock, self.connect() as conn:
+            if camera_id is None:
+                active_camera = conn.execute(
+                    """
+                    SELECT id FROM cameras
+                    WHERE enabled=1
+                    ORDER BY id ASC
+                    LIMIT 1
+                    """
+                ).fetchone()
+                camera_id = (
+                    active_camera["id"]
+                    if active_camera
+                    else None
+                )
+
             cur = conn.execute(
                 """
                 INSERT INTO print_jobs (
@@ -528,9 +546,10 @@ class Database:
                     output_dir,
                     bambu_task_id,
                     bambu_subtask_id,
-                    job_key
+                    job_key,
+                    camera_id
                 )
-                VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     name,
@@ -544,6 +563,7 @@ class Database:
                     bambu_task_id,
                     bambu_subtask_id,
                     job_key,
+                    camera_id,
                 ),
             )
             return cur.lastrowid
