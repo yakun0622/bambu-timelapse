@@ -587,6 +587,7 @@ class Database:
                 SELECT * FROM snapshots
                 WHERE job_id=?
                   AND status='SUCCESS'
+                  AND layer>1
                   AND layer<?
                 ORDER BY layer DESC, id DESC
                 LIMIT 1
