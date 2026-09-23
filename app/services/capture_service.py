@@ -5,7 +5,7 @@ from pathlib import Path
 
 from app.core.config import settings
 from app.core.events import event_bus
-from app.integrations.yi.camera import camera
+from app.camera import camera_manager
 from app.services.vision_service import vision_selector
 from app.storage.database import db
 
@@ -272,7 +272,7 @@ class CaptureService:
         started = time.monotonic()
         config = self._vision_config(runtime)
 
-        history = camera.get_history_window(
+        history = camera_manager.get_history_window(
             triggered_at,
             config["lookback_ms"],
         )
@@ -400,7 +400,7 @@ class CaptureService:
             frame_offset,
             rewind_ms_applied,
             frame_before_trigger_ms,
-        ) = camera.snapshot(
+        ) = camera_manager.snapshot(
             target,
             trigger_at=triggered_at,
             rewind_mode="time",
@@ -507,7 +507,7 @@ class CaptureService:
                 _debug_duration_ms,
                 _debug_error,
                 actual_before_trigger_ms,
-            ) = camera.capture_history_frame(
+            ) = camera_manager.capture_history_frame(
                 debug_target,
                 triggered_at,
                 debug_rewind_ms,
@@ -634,7 +634,7 @@ class CaptureService:
                     frame_offset,
                     rewind_ms_applied,
                     frame_before_trigger_ms,
-                ) = camera.snapshot(
+                ) = camera_manager.snapshot(
                     target,
                     trigger_at=triggered_at,
                     rewind_mode=rewind_mode,
